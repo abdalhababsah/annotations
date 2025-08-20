@@ -194,30 +194,38 @@ const restoreProject = () => {
     });
 };
 
+const openDeleteProjectDialog = () => {
+    showDeleteProjectDialog.value = true;
+};
+
 const deleteProject = () => {
-    if (confirm('Are you sure you want to delete this project? This action cannot be undone. All project data will be permanently deleted.')) {
-        router.delete(route('admin.projects.destroy', props.project.id), {
-            onError: (errors) => {
-                console.error('Failed to delete project:', errors);
-            }
-        });
-    }
+    router.delete(route('admin.projects.destroy', props.project.id), {
+        onError: (errors) => {
+            console.error('Failed to delete project:', errors);
+        }
+    });
 };
 
 // Handle member removal with router
-const handleRemoveMember = (memberId: number) => {
-    if (confirm('Remove this team member?')) {
-        router.delete(route('admin.projects.members.destroy', [props.project.id, memberId]), {
-            preserveScroll: true,
-            preserveState: true,
-            onSuccess: () => {
-                removeMember(memberId);
-            },
-            onError: (errors) => {
-                console.error('Failed to remove member:', errors);
-            }
-        });
-    }
+const openDeleteMemberDialog = (memberId: number) => {
+    memberToDelete.value = memberId;
+    showDeleteMemberDialog.value = true;
+};
+
+const handleRemoveMember = () => {
+    if (!memberToDelete.value) return;
+    
+    const memberId = memberToDelete.value;
+    router.delete(route('admin.projects.members.destroy', [props.project.id, memberId]), {
+        preserveScroll: true,
+        preserveState: true,
+        onSuccess: () => {
+            removeMember(memberId);
+        },
+        onError: (errors) => {
+            console.error('Failed to remove member:', errors);
+        }
+    });
 };
 </script>
 
@@ -271,15 +279,15 @@ const handleRemoveMember = (memberId: number) => {
                         Restore
                     </Button>
 
-                    <Button 
-                        variant="outline" 
-                        size="sm" 
-                        class="gap-1 border-red-500 text-red-700"
-                        @click="deleteProject"
-                    >
-                        <Trash class="h-4 w-4" />
-                        Delete
-                    </Button>
+                                         <Button 
+                         variant="outline" 
+                         size="sm" 
+                         class="gap-1 border-red-500 text-red-700"
+                         @click="openDeleteProjectDialog"
+                     >
+                         <Trash class="h-4 w-4" />
+                         Delete
+                     </Button>
                 </div>
             </div>
 
@@ -391,7 +399,7 @@ const handleRemoveMember = (memberId: number) => {
                                             variant="ghost" 
                                             size="sm" 
                                             class="text-red-600"
-                                            @click="() => handleRemoveMember(member.id)"
+                                            @click="() => openDeleteMemberDialog(member.id)"
                                         >
                                             Remove
                                         </Button>
@@ -466,6 +474,30 @@ const handleRemoveMember = (memberId: number) => {
           :open="showEditMemberDialog"
           @update:open="showEditMemberDialog = $event"
           @member-updated="onMemberUpdated"
+        />
+
+        <!-- Delete Project Confirmation Dialog -->
+        <ConfirmDialog
+          :open="showDeleteProjectDialog"
+          @update:open="showDeleteProjectDialog = $event"
+          title="Delete Project"
+          description="Are you sure you want to delete this project? This action cannot be undone. All project data will be permanently deleted."
+          confirm-text="Delete Project"
+          cancel-text="Cancel"
+          confirm-variant="destructive"
+          @confirm="deleteProject"
+        />
+
+        <!-- Delete Member Confirmation Dialog -->
+        <ConfirmDialog
+          :open="showDeleteMemberDialog"
+          @update:open="showDeleteMemberDialog = $event"
+          title="Remove Team Member"
+          description="Are you sure you want to remove this team member from the project?"
+          confirm-text="Remove"
+          cancel-text="Cancel"
+          confirm-variant="destructive"
+          @confirm="handleRemoveMember"
         />
     </AppLayout>
 </template>
