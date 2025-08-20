@@ -11,6 +11,7 @@ import { ref, computed } from 'vue';
 import { ArrowLeft, Calendar, Tag, File, Users, BarChart, Edit, Archive, Trash } from 'lucide-vue-next';
 import AddMemberDialog from '@/components/projects/AddMemberDialog.vue';
 import EditMemberDialog from '@/components/projects/EditMemberDialog.vue';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 interface Member {
     id: number;
@@ -115,6 +116,11 @@ const getStatusColor = (status: string) => {
 const showAddMemberDialog = ref(false);
 const showEditMemberDialog = ref(false);
 const selectedMember = ref<Member | null>(null);
+
+// Confirmation dialogs
+const showDeleteProjectDialog = ref(false);
+const showDeleteMemberDialog = ref(false);
+const memberToDelete = ref<number | null>(null);
 
 // Local state management
 const localMembers = ref<Member[]>(props.project.members);
