@@ -1,11 +1,12 @@
 <?php
+// TaskRepository.php
 
 namespace App\Repositories;
 
 use App\Models\Project;
 use App\Models\User;
 use App\Models\Task;
-use App\Models\MediaFile;
+use App\Models\AudioFile;
 use App\Repositories\Contracts\TaskRepositoryInterface;
 use Illuminate\Database\Eloquent\Collection;
 
@@ -19,30 +20,35 @@ class TaskRepository extends BaseRepository implements TaskRepositoryInterface
     public function findByProject(Project $project): Collection
     {
         return $this->model->where('project_id', $project->id)
-                          ->with(['mediaFile', 'assignee', 'annotations'])
+                          ->with(['audioFile', 'assignee', 'annotations'])
                           ->get();
     }
 
     public function findByAssignee(User $user): Collection
     {
         return $this->model->where('assigned_to', $user->id)
-                          ->with(['project', 'mediaFile', 'annotations'])
+                          ->with(['project', 'audioFile', 'annotations'])
                           ->get();
     }
 
     public function findPendingTasks(): Collection
     {
         return $this->model->where('status', 'pending')
-                          ->with(['project', 'mediaFile'])
+                          ->with(['project', 'audioFile'])
                           ->get();
     }
 
     public function findOverdueTasks(): Collection
     {
-        return $this->model->where('due_date', '<', now())
-                          ->whereNotIn('status', ['completed', 'approved'])
-                          ->with(['project', 'assignee', 'mediaFile'])
+        return $this->model->where('expires_at', '<', now())
+                          ->whereIn('status', ['assigned', 'in_progress'])
+                          ->with(['project', 'assignee', 'audioFile'])
                           ->get();
+    }
+
+    public function findExpiredTasks(): Collection
+    {
+        return $this->model->expired()->with(['project', 'assignee', 'audioFile'])->get();
     }
 
     public function assignTask(Task $task, User $user): Task
@@ -50,7 +56,8 @@ class TaskRepository extends BaseRepository implements TaskRepositoryInterface
         $task->update([
             'assigned_to' => $user->id,
             'status' => 'assigned',
-            'assigned_at' => now()
+            'assigned_at' => now(),
+            'expires_at' => now()->addMinutes($task->project->task_time_minutes),
         ]);
 
         return $task->fresh(['assignee', 'project']);
@@ -59,22 +66,35 @@ class TaskRepository extends BaseRepository implements TaskRepositoryInterface
     public function getTasksWithAnnotations(Project $project): Collection
     {
         return $this->model->where('project_id', $project->id)
-                          ->with(['annotations.values', 'mediaFile', 'assignee'])
+                          ->with(['annotations.annotationValues', 'audioFile', 'assignee'])
                           ->get();
     }
 
-    public function createFromMediaFile(array $data): Task
+    public function createFromAudioFile(array $data): Task
     {
-        $mediaFile = MediaFile::findOrFail($data['media_file_id']);
+        $audioFile = AudioFile::findOrFail($data['audio_file_id']);
         
-        $taskData = array_merge($data, [
-            'project_id' => $mediaFile->project_id,
-            'task_name' => $data['task_name'] ?? "Annotate {$mediaFile->original_filename}",
-            'estimated_duration' => $this->getEstimatedDuration($mediaFile),
-            'due_date' => $data['due_date'] ?? now()->addDays(7)
-        ]);
+        $taskData = [
+            'project_id' => $audioFile->project_id,
+            'audio_file_id' => $audioFile->id,
+            'status' => 'pending',
+        ];
 
         return $this->create($taskData);
+    }
+
+    public function createBulkFromAudioFiles(Project $project, array $audioFileIds): Collection
+    {
+        $tasks = collect();
+        
+        foreach ($audioFileIds as $audioFileId) {
+            $task = $this->createFromAudioFile([
+                'audio_file_id' => $audioFileId
+            ]);
+            $tasks->push($task);
+        }
+
+        return $tasks;
     }
 
     public function getUserWorkload(User $user, Project $project): int
@@ -85,18 +105,47 @@ class TaskRepository extends BaseRepository implements TaskRepositoryInterface
                           ->count();
     }
 
-    private function getEstimatedDuration(MediaFile $mediaFile): int
+    public function getAvailableTasksForUser(User $user, Project $project): Collection
     {
-        // Estimate duration based on media type and file properties
-        switch ($mediaFile->media_type) {
-            case 'audio':
-                // For audio: duration in seconds / 60 + 15 minutes for annotation
-                return ($mediaFile->duration ? ceil($mediaFile->duration / 60) : 30) + 15;
-            case 'image':
-                // For images: 10-15 minutes depending on complexity
-                return 15;
-            default:
-                return 30;
+        return Task::getAvailableTasksForUser($user->id, $project->id);
+    }
+
+    public function handleExpiredTasks(): int
+    {
+        $expiredTasks = $this->findExpiredTasks();
+        $count = 0;
+
+        foreach ($expiredTasks as $task) {
+            $task->handleExpiration();
+            $count++;
         }
+
+        return $count;
+    }
+
+    public function getUserTaskHistory(User $user, Project $project): Collection
+    {
+        return $this->model->where('project_id', $project->id)
+                          ->where('assigned_to', $user->id)
+                          ->with(['audioFile', 'annotations', 'skipActivities'])
+                          ->orderBy('assigned_at', 'desc')
+                          ->get();
+    }
+
+    public function getProjectTaskSummary(Project $project): array
+    {
+        $tasks = $this->model->where('project_id', $project->id);
+
+        return [
+            'total' => $tasks->count(),
+            'pending' => $tasks->where('status', 'pending')->count(),
+            'assigned' => $tasks->where('status', 'assigned')->count(),
+            'in_progress' => $tasks->where('status', 'in_progress')->count(),
+            'completed' => $tasks->where('status', 'completed')->count(),
+            'under_review' => $tasks->where('status', 'under_review')->count(),
+            'approved' => $tasks->where('status', 'approved')->count(),
+            'rejected' => $tasks->where('status', 'rejected')->count(),
+            'expired_count' => $this->model->where('project_id', $project->id)->expired()->count(),
+        ];
     }
 }

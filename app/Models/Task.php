@@ -1,9 +1,11 @@
 <?php
+// Updated Task.php - REMOVED SKIP FIELDS
 
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Carbon\Carbon;
 
 class Task extends Model
 {
@@ -11,25 +13,20 @@ class Task extends Model
 
     protected $fillable = [
         'project_id',
-        'media_file_id',
+        'audio_file_id',
         'assigned_to',
-        'task_name',
         'status',
         'assigned_at',
         'started_at',
         'completed_at',
-        'due_date',
-        'estimated_duration',
-        'actual_duration',
+        'expires_at',
     ];
 
     protected $casts = [
         'assigned_at' => 'datetime',
         'started_at' => 'datetime',
         'completed_at' => 'datetime',
-        'due_date' => 'datetime',
-        'estimated_duration' => 'integer',
-        'actual_duration' => 'integer',
+        'expires_at' => 'datetime',
     ];
 
     // Relationships
@@ -38,9 +35,9 @@ class Task extends Model
         return $this->belongsTo(Project::class);
     }
 
-    public function mediaFile()
+    public function audioFile()
     {
-        return $this->belongsTo(MediaFile::class);
+        return $this->belongsTo(AudioFile::class);
     }
 
     public function assignee()
@@ -56,6 +53,12 @@ class Task extends Model
     public function latestAnnotation()
     {
         return $this->hasOne(Annotation::class)->latest();
+    }
+
+    public function skipActivities()
+    {
+        return $this->hasMany(SkipActivity::class, 'audio_file_id', 'audio_file_id')
+                    ->where('activity_type', 'task');
     }
 
     // Scopes
@@ -79,56 +82,80 @@ class Task extends Model
         return $query->where('status', 'completed');
     }
 
-    public function scopeApproved($query)
+    public function scopeExpired($query)
     {
-        return $query->where('status', 'approved');
+        return $query->where('expires_at', '<', now())->whereIn('status', ['assigned', 'in_progress']);
     }
 
-    public function scopeOverdue($query)
+    public function scopeActive($query)
     {
-        return $query->where('due_date', '<', now())
-                    ->whereNotIn('status', ['completed', 'approved']);
-    }
-
-    public function scopeByAssignee($query, $userId)
-    {
-        return $query->where('assigned_to', $userId);
+        return $query->whereIn('status', ['assigned', 'in_progress']);
     }
 
     // Helper methods
-    public function isPending()
+    public function isExpired()
     {
-        return $this->status === 'pending';
+        return $this->expires_at && $this->expires_at->isPast() && in_array($this->status, ['assigned', 'in_progress']);
     }
 
-    public function isAssigned()
+    public function getRemainingTimeAttribute()
     {
-        return $this->status === 'assigned';
+        if (!$this->expires_at || $this->isExpired()) {
+            return 0;
+        }
+        
+        return $this->expires_at->diffInMinutes(now());
     }
 
-    public function isInProgress()
+    public function canBeStarted()
     {
-        return $this->status === 'in_progress';
+        return $this->status === 'assigned' && !$this->isExpired();
     }
 
-    public function isCompleted()
+    // Skip logic - creates skip record and resets task
+    public function skipByUser($user, $reason, $description = null)
     {
-        return $this->status === 'completed';
+        // Create skip activity record with task_id
+        SkipActivity::skipTask($this, $user, $reason, $description);
+        
+        // Reset task to pending
+        $this->update([
+            'status' => 'pending',
+            'assigned_to' => null,
+            'assigned_at' => null,
+            'started_at' => null,
+            'expires_at' => null,
+        ]);
     }
 
-    public function isApproved()
+    // Check if user has skipped this task
+    public function hasUserSkipped($userId)
     {
-        return $this->status === 'approved';
+        return SkipActivity::hasUserSkippedTask($userId, $this->id);
     }
 
-    public function isOverdue()
+    // Get available tasks for user (excluding skipped ones)
+    public static function getAvailableTasksForUser($userId, $projectId)
     {
-        return $this->due_date && $this->due_date->isPast() && !in_array($this->status, ['completed', 'approved']);
+        $skippedTaskIds = SkipActivity::getSkippedTasksForUser($userId, $projectId);
+        
+        return static::where('project_id', $projectId)
+                    ->where('status', 'pending')
+                    ->whereNotIn('id', $skippedTaskIds)
+                    ->get();
     }
 
-    public function getEfficiencyRatioAttribute()
+    // Handle expiration - resets task automatically
+    public function handleExpiration()
     {
-        if (!$this->estimated_duration || !$this->actual_duration) return null;
-        return round($this->estimated_duration / $this->actual_duration, 2);
+        if ($this->isExpired()) {
+            $this->update([
+                'status' => 'pending',
+                'assigned_to' => null,
+                'assigned_at' => null,
+                'started_at' => null,
+                'expires_at' => null,
+            ]);
+        }
     }
 }

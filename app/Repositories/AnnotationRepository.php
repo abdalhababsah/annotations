@@ -1,10 +1,12 @@
 <?php
+// AnnotationRepository.php
 
 namespace App\Repositories;
 
 use App\Models\Annotation;
 use App\Models\Task;
 use App\Models\User;
+use App\Models\Project;
 use App\Repositories\Contracts\AnnotationRepositoryInterface;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -19,22 +21,31 @@ class AnnotationRepository extends BaseRepository implements AnnotationRepositor
     public function findByTask(Task $task): Collection
     {
         return $this->model->where('task_id', $task->id)
-                          ->with(['values.dimension', 'annotator', 'comments'])
+                          ->with(['annotationValues.dimension', 'annotator'])
                           ->get();
     }
 
     public function findByAnnotator(User $annotator): Collection
     {
         return $this->model->where('annotator_id', $annotator->id)
-                          ->with(['task.project', 'task.mediaFile', 'values'])
+                          ->with(['task.project', 'task.audioFile', 'annotationValues'])
                           ->get();
     }
 
     public function findPendingReview(): Collection
     {
         return $this->model->where('status', 'submitted')
-                          ->with(['task.project', 'annotator', 'values'])
+                          ->with(['task.project', 'annotator', 'annotationValues'])
                           ->get();
+    }
+
+    public function findByProject(Project $project): Collection
+    {
+        return $this->model->whereHas('task', function($query) use ($project) {
+                            $query->where('project_id', $project->id);
+                        })
+                        ->with(['task.audioFile', 'annotator', 'annotationValues', 'reviews'])
+                        ->get();
     }
 
     public function createWithValues(Task $task, User $annotator, array $data): Annotation
@@ -51,14 +62,10 @@ class AnnotationRepository extends BaseRepository implements AnnotationRepositor
             // Create annotation values
             if (isset($data['values'])) {
                 foreach ($data['values'] as $dimensionId => $valueData) {
-                    $annotation->values()->create([
+                    $annotation->annotationValues()->create([
                         'dimension_id' => $dimensionId,
-                        'value_numeric' => $valueData['value_numeric'] ?? null,
-                        'value_text' => $valueData['value_text'] ?? null,
-                        'value_boolean' => $valueData['value_boolean'] ?? null,
-                        'value_categorical' => $valueData['value_categorical'] ?? null,
-                        'value_form_data' => $valueData['value_form_data'] ?? null,
-                        'confidence_score' => $valueData['confidence_score'] ?? null,
+                        'selected_value' => $valueData['selected_value'] ?? null,
+                        'numeric_value' => $valueData['numeric_value'] ?? null,
                         'notes' => $valueData['notes'] ?? null
                     ]);
                 }
@@ -67,7 +74,7 @@ class AnnotationRepository extends BaseRepository implements AnnotationRepositor
             // Update task status
             $task->update(['status' => 'in_progress', 'started_at' => now()]);
 
-            return $annotation->load(['values.dimension', 'task']);
+            return $annotation->load(['annotationValues.dimension', 'task']);
         });
     }
 
@@ -83,22 +90,18 @@ class AnnotationRepository extends BaseRepository implements AnnotationRepositor
             // Update annotation values
             if (isset($data['values'])) {
                 foreach ($data['values'] as $dimensionId => $valueData) {
-                    $annotation->values()->updateOrCreate(
+                    $annotation->annotationValues()->updateOrCreate(
                         ['dimension_id' => $dimensionId],
                         [
-                            'value_numeric' => $valueData['value_numeric'] ?? null,
-                            'value_text' => $valueData['value_text'] ?? null,
-                            'value_boolean' => $valueData['value_boolean'] ?? null,
-                            'value_categorical' => $valueData['value_categorical'] ?? null,
-                            'value_form_data' => $valueData['value_form_data'] ?? null,
-                            'confidence_score' => $valueData['confidence_score'] ?? null,
+                            'selected_value' => $valueData['selected_value'] ?? null,
+                            'numeric_value' => $valueData['numeric_value'] ?? null,
                             'notes' => $valueData['notes'] ?? null
                         ]
                     );
                 }
             }
 
-            return $annotation->fresh(['values.dimension']);
+            return $annotation->fresh(['annotationValues.dimension']);
         });
     }
 
@@ -111,7 +114,7 @@ class AnnotationRepository extends BaseRepository implements AnnotationRepositor
         }
 
         $totalDimensions = $task->project->annotationDimensions()->where('is_required', true)->count();
-        $completedDimensions = $annotation->values()->count();
+        $completedDimensions = $annotation->annotationValues()->count();
         
         $completionPercentage = $totalDimensions > 0 ? ($completedDimensions / $totalDimensions) * 100 : 0;
 
@@ -136,10 +139,47 @@ class AnnotationRepository extends BaseRepository implements AnnotationRepositor
             $annotation->task->update([
                 'status' => 'completed',
                 'completed_at' => now(),
-                'actual_duration' => $annotation->total_time_spent
             ]);
 
             return $annotation->fresh(['task']);
         });
+    }
+
+    public function getAnnotationsReadyForReview(Project $project): Collection
+    {
+        return $this->model->whereHas('task', function($query) use ($project) {
+                            $query->where('project_id', $project->id);
+                        })
+                        ->where('status', 'submitted')
+                        ->with(['task.audioFile', 'annotator', 'annotationValues.dimension'])
+                        ->get();
+    }
+
+    public function getUserAnnotationHistory(User $user, Project $project): Collection
+    {
+        return $this->model->whereHas('task', function($query) use ($project) {
+                            $query->where('project_id', $project->id);
+                        })
+                        ->where('annotator_id', $user->id)
+                        ->with(['task.audioFile', 'annotationValues', 'reviews'])
+                        ->orderBy('created_at', 'desc')
+                        ->get();
+    }
+
+    public function getProjectAnnotationSummary(Project $project): array
+    {
+        $annotations = $this->model->whereHas('task', function($query) use ($project) {
+            $query->where('project_id', $project->id);
+        });
+
+        return [
+            'total' => $annotations->count(),
+            'draft' => $annotations->where('status', 'draft')->count(),
+            'submitted' => $annotations->where('status', 'submitted')->count(),
+            'under_review' => $annotations->where('status', 'under_review')->count(),
+            'approved' => $annotations->where('status', 'approved')->count(),
+            'rejected' => $annotations->where('status', 'rejected')->count(),
+            'average_time_spent' => $annotations->whereNotNull('total_time_spent')->avg('total_time_spent') ?? 0,
+        ];
     }
 }

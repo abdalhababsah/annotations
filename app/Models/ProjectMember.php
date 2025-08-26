@@ -1,4 +1,5 @@
 <?php
+// ProjectMember.php
 
 namespace App\Models;
 
@@ -20,7 +21,6 @@ class ProjectMember extends Model
 
     protected $casts = [
         'is_active' => 'boolean',
-        'workload_limit' => 'integer',
     ];
 
     // Relationships
@@ -29,10 +29,17 @@ class ProjectMember extends Model
         return $this->belongsTo(Project::class);
     }
 
+    // App\Models\ProjectMember.php
     public function user()
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(User::class)->withDefault([
+            'id' => null,
+            'first_name' => '[deleted]',
+            'last_name' => 'user',
+            'email' => null,
+        ]);
     }
+
 
     public function assigner()
     {
@@ -45,11 +52,6 @@ class ProjectMember extends Model
         return $query->where('is_active', true);
     }
 
-    public function scopeByRole($query, $role)
-    {
-        return $query->where('role', $role);
-    }
-
     public function scopeAnnotators($query)
     {
         return $query->where('role', 'annotator');
@@ -58,6 +60,11 @@ class ProjectMember extends Model
     public function scopeReviewers($query)
     {
         return $query->where('role', 'reviewer');
+    }
+
+    public function scopeProjectAdmins($query)
+    {
+        return $query->where('role', 'project_admin');
     }
 
     // Helper methods
@@ -74,19 +81,5 @@ class ProjectMember extends Model
     public function isProjectAdmin()
     {
         return $this->role === 'project_admin';
-    }
-
-    public function getCurrentWorkload()
-    {
-        return $this->user->assignedTasks()
-                    ->where('project_id', $this->project_id)
-                    ->whereIn('status', ['assigned', 'in_progress'])
-                    ->count();
-    }
-
-    public function canTakeMoreTasks()
-    {
-        if (!$this->workload_limit) return true;
-        return $this->getCurrentWorkload() < $this->workload_limit;
     }
 }

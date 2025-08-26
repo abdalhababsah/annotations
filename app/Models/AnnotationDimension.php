@@ -1,4 +1,5 @@
 <?php
+// AnnotationDimension.php
 
 namespace App\Models;
 
@@ -16,19 +17,12 @@ class AnnotationDimension extends Model
         'dimension_type',
         'scale_min',
         'scale_max',
-        'scale_labels',
-        'form_template',
         'is_required',
         'display_order',
     ];
 
     protected $casts = [
-        'scale_min' => 'integer',
-        'scale_max' => 'integer',
-        'scale_labels' => 'array',
-        'form_template' => 'array',
         'is_required' => 'boolean',
-        'display_order' => 'integer',
     ];
 
     // Relationships
@@ -37,9 +31,9 @@ class AnnotationDimension extends Model
         return $this->belongsTo(Project::class);
     }
 
-    public function annotationCategories()
+    public function dimensionValues()
     {
-        return $this->hasMany(AnnotationCategory::class, 'dimension_id')->orderBy('display_order');
+        return $this->hasMany(DimensionValue::class, 'dimension_id')->orderBy('display_order');
     }
 
     public function annotationValues()
@@ -48,50 +42,37 @@ class AnnotationDimension extends Model
     }
 
     // Scopes
+    public function scopeCategorical($query)
+    {
+        return $query->where('dimension_type', 'categorical');
+    }
+
+    public function scopeNumericScale($query)
+    {
+        return $query->where('dimension_type', 'numeric_scale');
+    }
+
     public function scopeRequired($query)
     {
         return $query->where('is_required', true);
     }
 
-    public function scopeByType($query, $type)
-    {
-        return $query->where('dimension_type', $type);
-    }
-
-    public function scopeOrdered($query)
-    {
-        return $query->orderBy('display_order');
-    }
-
     // Helper methods
-    public function isNumericScale()
-    {
-        return $this->dimension_type === 'numeric_scale';
-    }
-
     public function isCategorical()
     {
         return $this->dimension_type === 'categorical';
     }
 
-    public function isBoolean()
+    public function isNumericScale()
     {
-        return $this->dimension_type === 'boolean';
+        return $this->dimension_type === 'numeric_scale';
     }
 
-    public function isText()
+    public function getScaleRangeAttribute()
     {
-        return $this->dimension_type === 'text';
-    }
-
-    public function isRepeatableForm()
-    {
-        return $this->dimension_type === 'repeatable_form';
-    }
-
-    public function getScaleRange()
-    {
-        if (!$this->isNumericScale()) return null;
-        return range($this->scale_min, $this->scale_max);
+        if ($this->isNumericScale()) {
+            return range($this->scale_min, $this->scale_max);
+        }
+        return [];
     }
 }

@@ -1,4 +1,5 @@
 <?php
+// Project.php
 
 namespace App\Models;
 
@@ -12,19 +13,16 @@ class Project extends Model
     protected $fillable = [
         'name',
         'description',
-        'project_type',
         'status',
         'owner_id',
-        'ownership_type',
         'created_by',
-        'assigned_by',
-        'quality_threshold',
+        'task_time_minutes',
+        'review_time_minutes',
         'annotation_guidelines',
         'deadline',
     ];
 
     protected $casts = [
-        'quality_threshold' => 'decimal:2',
         'deadline' => 'datetime',
     ];
 
@@ -39,11 +37,6 @@ class Project extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
-    public function assigner()
-    {
-        return $this->belongsTo(User::class, 'assigned_by');
-    }
-
     public function members()
     {
         return $this->hasMany(ProjectMember::class);
@@ -52,8 +45,8 @@ class Project extends Model
     public function users()
     {
         return $this->belongsToMany(User::class, 'project_members')
-                    ->withPivot('role', 'is_active', 'workload_limit', 'assigned_by')
-                    ->withTimestamps();
+            ->withPivot('role', 'is_active', 'workload_limit', 'assigned_by')
+            ->withTimestamps();
     }
 
     public function annotationDimensions()
@@ -61,24 +54,14 @@ class Project extends Model
         return $this->hasMany(AnnotationDimension::class)->orderBy('display_order');
     }
 
-    public function formLabels()
+    public function audioFiles()
     {
-        return $this->hasMany(FormLabel::class)->where('is_active', true)->orderBy('display_order');
-    }
-
-    public function mediaFiles()
-    {
-        return $this->hasMany(MediaFile::class);
+        return $this->hasMany(AudioFile::class);
     }
 
     public function tasks()
     {
         return $this->hasMany(Task::class);
-    }
-
-    public function qualityMetrics()
-    {
-        return $this->hasMany(QualityMetric::class);
     }
 
     // Scopes
@@ -87,27 +70,12 @@ class Project extends Model
         return $query->where('status', 'active');
     }
 
-    public function scopeByType($query, $type)
-    {
-        return $query->where('project_type', $type);
-    }
-
     public function scopeByOwner($query, $ownerId)
     {
         return $query->where('owner_id', $ownerId);
     }
 
     // Helper methods
-    public function isSelfCreated()
-    {
-        return $this->ownership_type === 'self_created';
-    }
-
-    public function isAdminAssigned()
-    {
-        return $this->ownership_type === 'admin_assigned';
-    }
-
     public function isActive()
     {
         return $this->status === 'active';
@@ -116,9 +84,111 @@ class Project extends Model
     public function getCompletionPercentageAttribute()
     {
         $totalTasks = $this->tasks()->count();
-        if ($totalTasks === 0) return 0;
-        
+        if ($totalTasks === 0)
+            return 0;
+
         $completedTasks = $this->tasks()->whereIn('status', ['completed', 'approved'])->count();
         return round(($completedTasks / $totalTasks) * 100, 2);
     }
+
+    public function getAnnotatorsAttribute()
+    {
+        return $this->members()->where('role', 'annotator')->where('is_active', true)->get();
+    }
+
+    public function getReviewersAttribute()
+    {
+        return $this->members()->where('role', 'reviewer')->where('is_active', true)->get();
+    }
+
+
+    // Get next available task for user (excludes skipped tasks)
+    public function getNextTaskForUser($userId)
+    {
+        $skippedTaskIds = SkipActivity::getSkippedTasksForUser($userId, $this->id);
+
+        return $this->tasks()
+            ->where('status', 'pending')
+            ->whereNotIn('id', $skippedTaskIds)
+            ->first();
+    }
+
+    // Assign task to user with time limit
+    public function assignTaskToUser($taskId, $userId)
+    {
+        $task = $this->tasks()->find($taskId);
+
+        if (!$task || $task->status !== 'pending') {
+            return false;
+        }
+
+        // Check if user has skipped this task
+        if ($task->hasUserSkipped($userId)) {
+            return false;
+        }
+
+        // Assign task with expiration time
+        $task->update([
+            'status' => 'assigned',
+            'assigned_to' => $userId,
+            'assigned_at' => now(),
+            'expires_at' => now()->addMinutes($this->task_time_minutes),
+        ]);
+
+        return $task;
+    }
+
+    // Get next available annotation for reviewer (excludes skipped reviews)
+    public function getNextReviewForUser($userId)
+    {
+        $skippedAnnotationIds = SkipActivity::where('user_id', $userId)
+            ->where('project_id', $this->id)
+            ->where('activity_type', 'review')
+            ->pluck('annotation_id')
+            ->toArray();
+
+        return Annotation::whereHas('task', function ($query) {
+            $query->where('project_id', $this->id);
+        })
+            ->where('status', 'submitted')
+            ->whereNotIn('id', $skippedAnnotationIds)
+            ->first();
+    }
+
+    // Assign review to user with time limit
+    public function assignReviewToUser($annotationId, $userId)
+    {
+        $annotation = Annotation::whereHas('task', function ($query) {
+            $query->where('project_id', $this->id);
+        })
+            ->where('id', $annotationId)
+            ->where('status', 'submitted')
+            ->first();
+
+        if (!$annotation) {
+            return false;
+        }
+
+        // Check if user has skipped this review
+        if (SkipActivity::hasUserSkippedReview($userId, $annotationId)) {
+            return false;
+        }
+
+        // Create review with expiration time
+        $review = Review::create([
+            'annotation_id' => $annotation->id,
+            'reviewer_id' => $userId,
+            'started_at' => now(),
+            'expires_at' => now()->addMinutes($this->review_time_minutes),
+        ]);
+
+        // Update annotation status
+        $annotation->update(['status' => 'under_review']);
+
+        return $review;
+    }
+    public function skipActivities()
+{
+    return $this->hasMany(SkipActivity::class);
+}
 }

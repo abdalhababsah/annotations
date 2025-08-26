@@ -1,138 +1,135 @@
+<!-- resources/js/components/projects/EditMemberDialog.vue -->
 <script setup lang="ts">
-import { ref, watch, onUnmounted } from 'vue';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { useForm } from '@inertiajs/vue3';
-
-interface Member {
-  id: number;
-  user: {
-    id: number;
-    name: string;
-    email: string;
-  };
-  role: string;
-  is_active: boolean;
-  workload_limit: number | null;
-}
+import { ref, watch, computed } from 'vue'
+import { router } from '@inertiajs/vue3'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Input } from '@/components/ui/input'
 
 const props = defineProps<{
-  projectId: number;
-  member: Member | null;
-  open: boolean;
-}>();
+  projectId: number
+  open: boolean
+  member: {
+    id: number
+    role: 'annotator' | 'reviewer' | 'project_admin' | string
+    is_active: boolean
+    workload_limit: number | null
+    user: { id:number; name:string; email:string }
+  } | null
+}>()
 
-const emit = defineEmits(['update:open', 'memberUpdated']);
+const emit = defineEmits<{ (e:'update:open', v:boolean): void; (e:'member-updated'): void }>()
 
-// Prevent body scrolling when dialog is open
-const preventBodyScroll = (isOpen: boolean) => {
-  if (isOpen) {
-    document.body.classList.add('overflow-hidden');
-  } else {
-    document.body.classList.remove('overflow-hidden');
-  }
-};
+const role = ref<'annotator' | 'reviewer' | 'project_admin'>('annotator')
+const isActive = ref<boolean>(true)
 
-// Watch for open prop changes
-watch(() => props.open, (newVal) => {
-  preventBodyScroll(newVal);
-}, { immediate: true });
+/** Text buffer shown in the input; '' => null (no cap) */
+const workloadText = ref<string>('')
 
-// Clean up on component unmount
-onUnmounted(() => {
-  document.body.classList.remove('overflow-hidden');
-});
+/** hydrate defaults whenever dialog opens or member changes */
+function hydrateFromProps() {
+  if (!props.member) return
+  role.value = (props.member.role as any) ?? 'annotator'
+  isActive.value = !!props.member.is_active
+  workloadText.value = props.member.workload_limit == null ? '' : String(props.member.workload_limit)
+}
+watch(() => props.open, (o) => { if (o) hydrateFromProps() }, { immediate: true })
+watch(() => props.member?.id, () => { if (props.open) hydrateFromProps() })
 
-const form = useForm({
-  role: props.member?.role ?? '',
-  workload_limit: props.member?.workload_limit ?? null,
-  is_active: props.member?.is_active ?? true,
-});
+/** parse & validate (keep your number-or-null semantics) */
+const parsedWorkload = computed<number | null>(() => {
+  const s = workloadText.value.trim()
+  if (s === '') return null
+  const n = Math.floor(Number(s))
+  return Number.isFinite(n) ? n : null
+})
+const workloadError = computed<string>(() => {
+  const w = parsedWorkload.value
+  if (w === null) return ''
+  if (w < 1) return 'Workload must be at least 1, or leave empty.'
+  if (w > 50) return 'Workload cannot exceed 50.'
+  return ''
+})
+
+const loading = ref(false)
 
 const submit = () => {
-  if (!props.member) return;
-  
-  form.patch(route('admin.projects.members.update', [props.projectId, props.member.id]), {
-    preserveScroll: true,
-    preserveState: true,
-    onSuccess: () => {
-      emit('memberUpdated', { 
-        id: props.member!.id, 
-        role: form.role, 
-        workload_limit: form.workload_limit,
-        is_active: form.is_active 
-      });
-      emit('update:open', false);
-      
-      // Reset the form for next use
-      form.reset();
-      form.clearErrors();
+  if (!props.member) return
+  if (workloadError.value) return
+
+  const w = parsedWorkload.value
+  const clamped = w === null ? null : Math.max(1, Math.min(50, w))
+
+  loading.value = true
+  router.patch(
+    route('admin.projects.members.update', [props.projectId, props.member.id]),
+    {
+      role: role.value,
+      workload_limit: clamped,   // number or null (unchanged logic)
+      is_active: !!isActive.value,
     },
-  });
-};
+    {
+      preserveScroll: true,
+      preserveState: true,
+      onFinish: () => { loading.value = false },
+      onSuccess: () => {
+        emit('member-updated')
+        emit('update:open', false)
+      },
+    }
+  )
+}
 </script>
 
 <template>
-  <Dialog :open="open" @update:open="(val) => emit('update:open', val)">
-    <DialogContent class="sm:max-w-md fixed-dialog">
-      <DialogHeader>
-        <DialogTitle>Edit Team Member</DialogTitle>
-        <DialogDescription v-if="member">
-          Editing {{ member.user.name }}
-        </DialogDescription>
-      </DialogHeader>
-      
-      <form v-if="member" @submit.prevent="submit" class="space-y-4 py-4">
-        <div class="space-y-2">
-          <Label for="role">Role</Label>
-          <Select v-model="form.role">
-            <SelectTrigger>
-              <SelectValue placeholder="Select a role" />
-            </SelectTrigger>
-            <SelectContent>
+  <Dialog :open="open" @update:open="v => emit('update:open', v)">
+    <DialogContent class="sm:max-w-lg">
+      <DialogHeader><DialogTitle>Edit Member</DialogTitle></DialogHeader>
+
+      <div v-if="member" class="space-y-3">
+        <div class="text-sm">
+          <div class="font-medium">{{ member.user.name }}</div>
+          <div class="text-muted-foreground">{{ member.user.email }}</div>
+        </div>
+
+        <Select v-model="role">
+          <SelectTrigger class="w-full"><SelectValue placeholder="Role" /></SelectTrigger>
+          <SelectContent class="w-[--radix-select-trigger-width] max-w-[--radix-select-content-available-width]">
+            <SelectGroup>
               <SelectItem value="annotator">Annotator</SelectItem>
               <SelectItem value="reviewer">Reviewer</SelectItem>
               <SelectItem value="project_admin">Project Admin</SelectItem>
-            </SelectContent>
-          </Select>
-          <p v-if="form.errors.role" class="text-sm text-red-600">{{ form.errors.role }}</p>
-        </div>
-        
-        <div class="space-y-2">
-          <Label for="workload_limit">Workload Limit</Label>
-          <Input 
-            type="number" 
-            id="workload_limit"
-            v-model="form.workload_limit as any" 
-            min="1" 
-            max="50" 
-            placeholder="Maximum tasks (optional)" 
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+
+        <div>
+          <!-- Use v-model (Input emits update:modelValue). Also handle the event explicitly for safety. -->
+          <Input
+            v-model="workloadText"
+            @update:modelValue="(v:any) => { workloadText = (v ?? '') + '' }"
+            type="number"
+            inputmode="numeric"
+            min="1"
+            max="50"
+            step="1"
+            placeholder="Workload limit (leave empty for no cap)"
+            @keydown.enter.prevent="submit"
           />
-          <p v-if="form.errors.workload_limit" class="text-sm text-red-600">{{ form.errors.workload_limit }}</p>
+          <p v-if="workloadError" class="mt-1 text-xs text-destructive">{{ workloadError }}</p>
         </div>
-        
-        <div class="space-y-2">
-          <Label for="is_active">Status</Label>
-          <Select v-model="form.is_active as any">
-            <SelectTrigger>
-              <SelectValue placeholder="Select status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem :value="true as any">Active</SelectItem>
-              <SelectItem :value="false as any">Inactive</SelectItem>
-            </SelectContent>
-          </Select>
-          <p v-if="form.errors.is_active" class="text-sm text-red-600">{{ form.errors.is_active }}</p>
+
+        <div class="flex items-center gap-2">
+          <input id="active" type="checkbox" v-model="isActive" class="h-4 w-4 rounded border" />
+          <label for="active" class="text-sm">Active</label>
         </div>
-      
-        <DialogFooter class="pt-4">
-          <Button type="button" variant="outline" @click="emit('update:open', false)">Cancel</Button>
-          <Button type="submit" :disabled="form.processing">Save Changes</Button>
-        </DialogFooter>
-      </form>
+
+        <div class="flex justify-end gap-2 pt-2">
+          <Button variant="outline" @click="emit('update:open', false)">Cancel</Button>
+          <Button :disabled="loading || !!workloadError" @click="submit">Save</Button>
+        </div>
+      </div>
     </DialogContent>
   </Dialog>
 </template>

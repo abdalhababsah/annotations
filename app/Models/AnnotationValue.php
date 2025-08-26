@@ -1,4 +1,5 @@
 <?php
+// AnnotationValue.php
 
 namespace App\Models;
 
@@ -12,20 +13,9 @@ class AnnotationValue extends Model
     protected $fillable = [
         'annotation_id',
         'dimension_id',
-        'value_numeric',
-        'value_text',
-        'value_boolean',
-        'value_categorical',
-        'value_form_data',
-        'confidence_score',
+        'selected_value',
+        'numeric_value',
         'notes',
-    ];
-
-    protected $casts = [
-        'value_numeric' => 'decimal:4',
-        'value_boolean' => 'boolean',
-        'value_form_data' => 'array',
-        'confidence_score' => 'decimal:2',
     ];
 
     // Relationships
@@ -42,66 +32,24 @@ class AnnotationValue extends Model
     // Helper methods
     public function getValue()
     {
-        if ($this->value_numeric !== null) return $this->value_numeric;
-        if ($this->value_text !== null) return $this->value_text;
-        if ($this->value_boolean !== null) return $this->value_boolean;
-        if ($this->value_categorical !== null) return $this->value_categorical;
-        if ($this->value_form_data !== null) return $this->value_form_data;
+        if ($this->dimension->isCategorical()) {
+            return $this->selected_value;
+        } elseif ($this->dimension->isNumericScale()) {
+            return $this->numeric_value;
+        }
         
         return null;
     }
 
-    public function getFormattedValue()
+    public function getDisplayValueAttribute()
     {
-        $dimension = $this->dimension;
+        $value = $this->getValue();
         
-        if ($dimension->isNumericScale() && $this->value_numeric !== null) {
-            $labels = $dimension->scale_labels;
-            $value = (string) $this->value_numeric;
-            
-            if ($labels && isset($labels[$value])) {
-                return "{$this->value_numeric} - {$labels[$value]}";
-            }
-            
-            return $this->value_numeric;
+        if ($this->dimension->isCategorical()) {
+            $dimensionValue = $this->dimension->dimensionValues()->where('value', $value)->first();
+            return $dimensionValue ? $dimensionValue->display_label : $value;
         }
         
-        if ($dimension->isBoolean() && $this->value_boolean !== null) {
-            return $this->value_boolean ? 'Yes' : 'No';
-        }
-        
-        if ($dimension->isRepeatableForm() && $this->value_form_data !== null) {
-            $data = $this->value_form_data;
-            
-            if (isset($data['objects'])) {
-                return count($data['objects']) . ' objects detected';
-            }
-            
-            if (isset($data['segments'])) {
-                return count($data['segments']) . ' segments marked';
-            }
-            
-            return 'Form data available';
-        }
-        
-        return $this->getValue();
-    }
-
-    public function getObjectsCount()
-    {
-        if (!$this->value_form_data || !isset($this->value_form_data['objects'])) {
-            return 0;
-        }
-        
-        return count($this->value_form_data['objects']);
-    }
-
-    public function getSegmentsCount()
-    {
-        if (!$this->value_form_data || !isset($this->value_form_data['segments'])) {
-            return 0;
-        }
-        
-        return count($this->value_form_data['segments']);
+        return $value;
     }
 }

@@ -1,4 +1,5 @@
 <?php
+// 004_create_dimension_values_table.php
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -6,16 +7,13 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
-        Schema::create('annotation_categories', function (Blueprint $table) {
+        Schema::create('dimension_values', function (Blueprint $table) {
             $table->id();
             $table->foreignId('dimension_id')->constrained('annotation_dimensions')->onDelete('cascade');
-            $table->string('category_name', 100);
-            $table->string('category_value', 50)->nullable();
+            $table->string('value', 100)->comment('e.g., male, female, other');
+            $table->string('label', 100)->nullable()->comment('Display label');
             $table->integer('display_order')->default(0);
             $table->timestamps();
 
@@ -23,11 +21,8 @@ return new class extends Migration
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
-        Schema::dropIfExists('annotation_categories');
+        Schema::dropIfExists('dimension_values');
     }
 };

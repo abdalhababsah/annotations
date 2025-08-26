@@ -1,4 +1,5 @@
 <?php
+// Annotation.php
 
 namespace App\Models;
 
@@ -21,7 +22,6 @@ class Annotation extends Model
     protected $casts = [
         'started_at' => 'datetime',
         'submitted_at' => 'datetime',
-        'total_time_spent' => 'integer',
     ];
 
     // Relationships
@@ -35,14 +35,9 @@ class Annotation extends Model
         return $this->belongsTo(User::class, 'annotator_id');
     }
 
-    public function values()
+    public function annotationValues()
     {
         return $this->hasMany(AnnotationValue::class);
-    }
-
-    public function comments()
-    {
-        return $this->hasMany(AnnotationComment::class);
     }
 
     public function reviews()
@@ -81,48 +76,23 @@ class Annotation extends Model
         return $query->where('status', 'rejected');
     }
 
-    public function scopeByAnnotator($query, $annotatorId)
-    {
-        return $query->where('annotator_id', $annotatorId);
-    }
-
     // Helper methods
-    public function isDraft()
+    public function getFormattedTimeSpentAttribute()
     {
-        return $this->status === 'draft';
+        if (!$this->total_time_spent) return '00:00';
+        
+        $minutes = floor($this->total_time_spent / 60);
+        $seconds = $this->total_time_spent % 60;
+        return sprintf('%02d:%02d', $minutes, $seconds);
     }
 
-    public function isSubmitted()
+    public function isEditable()
+    {
+        return in_array($this->status, ['draft', 'rejected']);
+    }
+
+    public function canBeReviewed()
     {
         return $this->status === 'submitted';
-    }
-
-    public function isUnderReview()
-    {
-        return $this->status === 'under_review';
-    }
-
-    public function isApproved()
-    {
-        return $this->status === 'approved';
-    }
-
-    public function isRejected()
-    {
-        return $this->status === 'rejected';
-    }
-
-    public function getTimeSpentFormattedAttribute()
-    {
-        if (!$this->total_time_spent) return '0 minutes';
-        
-        $hours = floor($this->total_time_spent / 60);
-        $minutes = $this->total_time_spent % 60;
-        
-        if ($hours > 0) {
-            return sprintf('%d hours %d minutes', $hours, $minutes);
-        }
-        
-        return sprintf('%d minutes', $minutes);
     }
 }

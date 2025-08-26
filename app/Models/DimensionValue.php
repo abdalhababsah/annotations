@@ -1,23 +1,20 @@
 <?php
+// DimensionValue.php
 
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class AnnotationCategory extends Model
+class DimensionValue extends Model
 {
     use HasFactory;
 
     protected $fillable = [
         'dimension_id',
-        'category_name',
-        'category_value',
+        'value',
+        'label',
         'display_order',
-    ];
-
-    protected $casts = [
-        'display_order' => 'integer',
     ];
 
     // Relationships
@@ -27,8 +24,14 @@ class AnnotationCategory extends Model
     }
 
     // Scopes
-    public function scopeOrdered($query)
+    public function scopeOrderedByDisplay($query)
     {
         return $query->orderBy('display_order');
+    }
+
+    // Helper methods
+    public function getDisplayLabelAttribute()
+    {
+        return $this->label ?: $this->value;
     }
 }

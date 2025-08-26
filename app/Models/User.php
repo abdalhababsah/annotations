@@ -1,4 +1,5 @@
 <?php
+// User.php
 
 namespace App\Models;
 
@@ -41,11 +42,6 @@ class User extends Authenticatable
         return $this->hasMany(Project::class, 'created_by');
     }
 
-    public function assignedProjects()
-    {
-        return $this->hasMany(Project::class, 'assigned_by');
-    }
-
     public function projectMemberships()
     {
         return $this->hasMany(ProjectMember::class);
@@ -73,19 +69,9 @@ class User extends Authenticatable
         return $this->hasMany(Review::class, 'reviewer_id');
     }
 
-    public function annotationComments()
+    public function uploadedAudioFiles()
     {
-        return $this->hasMany(AnnotationComment::class);
-    }
-
-    public function qualityMetrics()
-    {
-        return $this->hasMany(QualityMetric::class);
-    }
-
-    public function uploadedMediaFiles()
-    {
-        return $this->hasMany(MediaFile::class, 'uploaded_by');
+        return $this->hasMany(AudioFile::class, 'uploaded_by');
     }
 
     // Scopes
@@ -118,5 +104,28 @@ class User extends Authenticatable
     public function getFullNameAttribute()
     {
         return trim("{$this->first_name} {$this->last_name}");
+    }
+
+    public function skipActivities()
+    {
+        return $this->hasMany(SkipActivity::class);
+    }
+    // Skip statistics
+    public function getTaskSkipCount($projectId = null)
+    {
+        $query = $this->taskSkips();
+        if ($projectId) {
+            $query->where('project_id', $projectId);
+        }
+        return $query->count();
+    }
+
+    public function getReviewSkipCount($projectId = null)
+    {
+        $query = $this->reviewSkips();
+        if ($projectId) {
+            $query->where('project_id', $projectId);
+        }
+        return $query->count();
     }
 }

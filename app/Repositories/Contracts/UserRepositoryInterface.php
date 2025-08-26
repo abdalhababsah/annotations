@@ -1,4 +1,5 @@
 <?php
+// UserRepositoryInterface.php - UNCHANGED (Already correct)
 
 namespace App\Repositories\Contracts;
 

@@ -1,4 +1,5 @@
 <?php
+// BaseRepository.php
 
 namespace App\Repositories;
 
