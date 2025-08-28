@@ -35,7 +35,8 @@ import {
     Download,
     Share,
     MoreHorizontal,
-    Settings
+    Settings,
+    FolderOpen
 } from 'lucide-vue-next';
 import AddMemberDialog from '@/components/projects/AddMemberDialog.vue';
 import EditMemberDialog from '@/components/projects/EditMemberDialog.vue';
@@ -81,6 +82,7 @@ interface Project {
     project_type: 'audio';
     ownership_type: 'self_created' | 'admin_assigned';
     quality_threshold: number;
+    total_batches: number;
     task_time_minutes: number;
     review_time_minutes: number;
     annotation_guidelines: string | null;
@@ -313,7 +315,8 @@ const continueDimensionSetup = () => {
     <Head :title="project.name" />
 
     <AppLayout :breadcrumbs="breadcrumbs">
-        <div class="flex-1 space-y-6 p-4 md:p-6 lg:p-8">
+        <div class="flex h-full flex-1 flex-col gap-6 p-6">
+
             <!-- Dimensions Incomplete Warning -->
             <Alert v-if="isDimensionsIncomplete" variant="destructive" class="border-amber-200 bg-amber-50">
                 <AlertCircle class="h-4 w-4 text-amber-600" />
@@ -321,7 +324,8 @@ const continueDimensionSetup = () => {
                     <div class="flex items-center justify-between">
                         <div>
                             <p class="font-medium mb-1">Project Setup Incomplete</p>
-                            <p class="text-sm">This project cannot be used until annotation dimensions are configured.
+                            <p class="text-sm">
+                                This project cannot be used until annotation dimensions are configured.
                             </p>
                         </div>
                         <Button @click="continueDimensionSetup" size="sm" class="ml-4">
@@ -332,9 +336,9 @@ const continueDimensionSetup = () => {
                 </AlertDescription>
             </Alert>
 
-            <!-- Project Header -->
-            <div class="flex flex-col space-y-6">
-                <!-- Navigation & Status -->
+            <!-- Header -->
+            <div class="flex flex-col gap-4">
+                <!-- Nav + Status Row -->
                 <div class="flex items-center justify-between">
                     <Link :href="route('admin.projects.index')">
                     <Button variant="ghost" class="gap-2">
@@ -353,11 +357,13 @@ const continueDimensionSetup = () => {
                     </div>
                 </div>
 
-                <!-- Project Title & Metadata -->
+                <!-- Title + Meta -->
                 <div class="space-y-4">
                     <div>
                         <div class="flex items-center gap-3">
-                            <h1 class="text-3xl font-bold tracking-tight md:text-4xl">{{ project.name }}</h1>
+                            <h1 class="text-3xl font-bold tracking-tight md:text-4xl">
+                                {{ project.name }}
+                            </h1>
                         </div>
                         <p v-if="project.description" class="mt-2 text-lg text-muted-foreground max-w-3xl">
                             {{ project.description }}
@@ -367,12 +373,13 @@ const continueDimensionSetup = () => {
                         </p>
                     </div>
 
-                    <!-- Metadata Row -->
                     <div class="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
                         <div class="flex items-center gap-1.5">
                             <File class="h-4 w-4" />
-                            <span>{{ project.project_type.charAt(0).toUpperCase() + project.project_type.slice(1) }}
-                                Annotation</span>
+                            <span>
+                                {{ project.project_type.charAt(0).toUpperCase() + project.project_type.slice(1) }}
+                                Annotation
+                            </span>
                         </div>
 
                         <div class="flex items-center gap-1.5">
@@ -396,8 +403,8 @@ const continueDimensionSetup = () => {
                 </div>
             </div>
 
-            <!-- Key Metrics Cards -->
-            <div class="grid gap-4 md:gap-6 lg:grid-cols-4">
+            <!-- Key Metrics -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
                 <div v-for="metric in taskMetrics" :key="metric.label"
                     class="group relative overflow-hidden rounded-lg border bg-card p-6 shadow-sm transition-shadow hover:shadow-md">
                     <div class="flex items-center justify-between">
@@ -415,114 +422,141 @@ const continueDimensionSetup = () => {
                 </div>
             </div>
 
-            <!-- Progress Overview -->
-            <Card>
-                <CardHeader class="pb-4">
-                    <div class="flex items-center justify-between">
-                        <CardTitle class="flex items-center gap-2">
-                            <TrendingUp class="h-5 w-5" />
-                            Project Progress
-                        </CardTitle>
-                        <Badge variant="secondary" class="gap-1">
-                            {{ project.statistics.completion_percentage }}% complete
-                        </Badge>
-                    </div>
-                </CardHeader>
-                <CardContent class="space-y-4">
-                    <div class="space-y-2">
-                        <div class="flex justify-between text-sm">
-                            <span>Overall Completion</span>
-                            <span class="font-medium">{{ project.statistics.completion_percentage }}%</span>
-                        </div>
-                        <Progress :value="project.statistics.completion_percentage" class="h-2" />
-                    </div>
+            <!-- Main Grid (12 cols: 8 main / 4 sidebar) -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
-                    <!-- Task Breakdown -->
-                    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                        <div class="flex items-center gap-3 rounded-md bg-muted/30 p-3">
-                            <div class="rounded-sm bg-blue-500/10 p-1.5">
-                                <Clock class="h-3 w-3 text-blue-600" />
-                            </div>
-                            <div class="space-y-0.5">
-                                <p class="text-sm font-medium">{{ project.statistics.pending_tasks }}</p>
-                                <p class="text-xs text-muted-foreground">Pending</p>
-                            </div>
-                        </div>
-
-                        <div class="flex items-center gap-3 rounded-md bg-muted/30 p-3">
-                            <div class="rounded-sm bg-yellow-500/10 p-1.5">
-                                <Play class="h-3 w-3 text-yellow-600" />
-                            </div>
-                            <div class="space-y-0.5">
-                                <p class="text-sm font-medium">{{ project.statistics.assigned_tasks +
-                                    project.statistics.in_progress_tasks }}</p>
-                                <p class="text-xs text-muted-foreground">In Progress</p>
-                            </div>
-                        </div>
-
-                        <div class="flex items-center gap-3 rounded-md bg-muted/30 p-3">
-                            <div class="rounded-sm bg-purple-500/10 p-1.5">
-                                <Eye class="h-3 w-3 text-purple-600" />
-                            </div>
-                            <div class="space-y-0.5">
-                                <p class="text-sm font-medium">{{ project.statistics.under_review_tasks }}</p>
-                                <p class="text-xs text-muted-foreground">Under Review</p>
-                            </div>
-                        </div>
-
-                        <div class="flex items-center gap-3 rounded-md bg-muted/30 p-3">
-                            <div class="rounded-sm bg-green-500/10 p-1.5">
-                                <CheckCircle class="h-3 w-3 text-green-600" />
-                            </div>
-                            <div class="space-y-0.5">
-                                <p class="text-sm font-medium">{{ project.statistics.approved_tasks }}</p>
-                                <p class="text-xs text-muted-foreground">Approved</p>
-                            </div>
-                        </div>
-                    </div>
-                </CardContent>
-                <CardFooter>
-                    <div class="w-full">
-                        <Link v-if="!isDimensionsIncomplete" :href="`/admin/projects/${project.id}/tasks`"
-                            class="w-full">
-                        <Button class="w-full gap-2">
-                            <ListTodo class="h-4 w-4" />
-                            Manage Tasks
-                        </Button>
-                        </Link>
-                        <Button v-else @click="continueDimensionSetup" class="w-full gap-2" variant="outline">
-                            <Settings class="h-4 w-4" />
-                            Complete Project Setup First
-                        </Button>
-                    </div>
-                </CardFooter>
-            </Card>
-
-            <!-- Main Content Grid -->
-            <div class="grid gap-6 lg:grid-cols-3">
-                <!-- Left Column - Main Content -->
-                <div class="space-y-6 lg:col-span-2">
-                    <!-- Team Members -->
+                <!-- Left: Main content -->
+                <div class="space-y-6 lg:col-span-8">
+                    <!-- Project Progress -->
                     <Card>
-                        <CardHeader>
-                            <CardTitle class="flex items-center gap-2">
-                                <Users class="h-5 w-5" />
-                                Team
-                                <Badge variant="secondary">{{ project.statistics.team_size }}</Badge>
-                            </CardTitle>
+                        <CardHeader class="pb-4">
+                            <div class="flex items-center justify-between">
+                                <CardTitle class="flex items-center gap-2">
+                                    <TrendingUp class="h-5 w-5" />
+                                    Project Progress
+                                </CardTitle>
+                                <Badge variant="secondary" class="gap-1">
+                                    {{ project.statistics.completion_percentage }}% complete
+                                </Badge>
+                            </div>
                         </CardHeader>
-                        <CardContent class="space-y-2">
-                            <p class="text-sm text-muted-foreground">
-                                Manage assignments, roles, and availability on the team members page.
-                            </p>
-                            <Link :href="route('admin.projects.members.index', project.id)">
-                            <Button class="gap-2">
-                                <Users class="h-4 w-4" /> Open Team Page
-                            </Button>
-                            </Link>
+                        <CardContent class="space-y-4">
+                            <div class="space-y-2">
+                                <div class="flex justify-between text-sm">
+                                    <span>Overall Completion</span>
+                                    <span class="font-medium">{{ project.statistics.completion_percentage }}%</span>
+                                </div>
+                                <Progress :value="project.statistics.completion_percentage" class="h-2" />
+                            </div>
+
+                            <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                                <div class="flex items-center gap-3 rounded-md bg-muted/30 p-3">
+                                    <div class="rounded-sm bg-blue-500/10 p-1.5">
+                                        <Clock class="h-3 w-3 text-blue-600" />
+                                    </div>
+                                    <div class="space-y-0.5">
+                                        <p class="text-sm font-medium">{{ project.statistics.pending_tasks }}</p>
+                                        <p class="text-xs text-muted-foreground">Pending</p>
+                                    </div>
+                                </div>
+
+                                <div class="flex items-center gap-3 rounded-md bg-muted/30 p-3">
+                                    <div class="rounded-sm bg-yellow-500/10 p-1.5">
+                                        <Play class="h-3 w-3 text-yellow-600" />
+                                    </div>
+                                    <div class="space-y-0.5">
+                                        <p class="text-sm font-medium">
+                                            {{ project.statistics.assigned_tasks + project.statistics.in_progress_tasks
+                                            }}
+                                        </p>
+                                        <p class="text-xs text-muted-foreground">In Progress</p>
+                                    </div>
+                                </div>
+
+                                <div class="flex items-center gap-3 rounded-md bg-muted/30 p-3">
+                                    <div class="rounded-sm bg-purple-500/10 p-1.5">
+                                        <Eye class="h-3 w-3 text-purple-600" />
+                                    </div>
+                                    <div class="space-y-0.5">
+                                        <p class="text-sm font-medium">{{ project.statistics.under_review_tasks }}</p>
+                                        <p class="text-xs text-muted-foreground">Under Review</p>
+                                    </div>
+                                </div>
+
+                                <div class="flex items-center gap-3 rounded-md bg-muted/30 p-3">
+                                    <div class="rounded-sm bg-green-500/10 p-1.5">
+                                        <CheckCircle class="h-3 w-3 text-green-600" />
+                                    </div>
+                                    <div class="space-y-0.5">
+                                        <p class="text-sm font-medium">{{ project.statistics.approved_tasks }}</p>
+                                        <p class="text-xs text-muted-foreground">Approved</p>
+                                    </div>
+                                </div>
+                            </div>
                         </CardContent>
+                        <CardFooter>
+                            <div class="w-full">
+                                <Link v-if="!isDimensionsIncomplete" :href="`/admin/projects/${project.id}/tasks`"
+                                    class="w-full">
+                                <Button class="w-full gap-2">
+                                    <ListTodo class="h-4 w-4" />
+                                    Manage Tasks
+                                </Button>
+                                </Link>
+                                <Button v-else @click="continueDimensionSetup" class="w-full gap-2" variant="outline">
+                                    <Settings class="h-4 w-4" />
+                                    Complete Project Setup First
+                                </Button>
+                            </div>
+                        </CardFooter>
                     </Card>
 
+                    <!-- Team + Batches (two-up) -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- Team card -->
+                        <Card>
+                            <CardHeader>
+                                <CardTitle class="flex items-center gap-2">
+                                    <Users class="h-5 w-5" />
+                                    Team
+                                    <Badge variant="secondary">{{ project.statistics?.team_size ?? 0 }}</Badge>
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent class="space-y-2">
+                                <p class="text-sm text-muted-foreground">
+                                    Manage assignments, and roles on the team members page.
+                                </p>
+                                <Link :href="route('admin.projects.members.index', project.id)">
+                                <Button class="gap-2">
+                                    <Users class="h-4 w-4" />
+                                    Open Team Page
+                                </Button>
+                                </Link>
+                            </CardContent>
+                        </Card>
+
+                        <!-- Batches card -->
+                        <Card>
+                            <CardHeader>
+                                <CardTitle class="flex items-center gap-2">
+                                    <FolderOpen class="h-5 w-5" />
+                                    Batches
+                                    <Badge variant="secondary">{{ project?.total_batches ?? 0 }}</Badge>
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent class="space-y-2">
+                                <p class="text-sm text-muted-foreground">
+                                    Create, publish, and monitor batches for this project.
+                                </p>
+                                <Link :href="route('admin.projects.batches.index', project.id)">
+                                <Button class="gap-2">
+                                    <FolderOpen class="h-4 w-4" />
+                                    Open Batches
+                                </Button>
+                                </Link>
+                            </CardContent>
+                        </Card>
+                    </div>
 
                     <!-- Annotation Dimensions -->
                     <Card>
@@ -541,7 +575,7 @@ const continueDimensionSetup = () => {
                             </div>
                         </CardHeader>
                         <CardContent>
-                            <!-- No Dimensions State -->
+                            <!-- No Dimensions -->
                             <div v-if="dimensions.length === 0"
                                 class="text-center py-8 border-2 border-dashed border-amber-300 rounded-lg bg-amber-50">
                                 <Settings2 class="mx-auto h-8 w-8 text-amber-500 mb-4" />
@@ -578,7 +612,6 @@ const continueDimensionSetup = () => {
                                         </Badge>
                                     </div>
 
-                                    <!-- Values Preview -->
                                     <div v-if="dimension.dimension_type === 'categorical'" class="flex flex-wrap gap-1">
                                         <Badge v-for="value in dimension.values.slice(0, 3)" :key="value.id"
                                             variant="outline" class="text-xs">
@@ -597,7 +630,7 @@ const continueDimensionSetup = () => {
                         </CardContent>
                     </Card>
 
-                    <!-- Guidelines (if available) -->
+                    <!-- Guidelines -->
                     <Card v-if="project.annotation_guidelines">
                         <CardHeader>
                             <CardTitle class="flex items-center gap-2">
@@ -607,19 +640,17 @@ const continueDimensionSetup = () => {
                         </CardHeader>
                         <CardContent>
                             <div class="rounded-md bg-muted/30 p-4">
-                                <p class="whitespace-pre-wrap text-sm leading-relaxed">{{ project.annotation_guidelines
-                                    }}</p>
+                                <p class="whitespace-pre-wrap text-sm leading-relaxed">
+                                    {{ project.annotation_guidelines }}
+                                </p>
                             </div>
                         </CardContent>
                     </Card>
                 </div>
 
-                <!-- Right Column - Sidebar -->
-                <div class="space-y-6">
-                    <!-- Quick Actions -->
-
-
-                    <!-- Project Setup Reminder -->
+                <!-- Right: Sidebar -->
+                <div class="space-y-6 lg:col-span-4 lg:sticky lg:top-6 self-start">
+                    <!-- Setup Reminder (only if incomplete) -->
                     <Card v-if="isDimensionsIncomplete" class="border-amber-200 bg-amber-50">
                         <CardHeader>
                             <CardTitle class="text-amber-800">Complete Setup</CardTitle>
@@ -643,7 +674,7 @@ const continueDimensionSetup = () => {
                         </CardFooter>
                     </Card>
 
-                    <!-- Project Info -->
+                    <!-- Project Details -->
                     <Card>
                         <CardHeader>
                             <CardTitle>Project Details</CardTitle>
@@ -700,7 +731,7 @@ const continueDimensionSetup = () => {
             </div>
         </div>
 
-        <!-- Dialogs -->
+        <!-- Dialogs (outside container so they’re not affected by grid) -->
         <AddMemberDialog v-if="!isDimensionsIncomplete" :project-id="project.id" :open="showAddMemberDialog"
             @update:open="showAddMemberDialog = $event" @member-added="onMemberAdded" />
 
@@ -713,12 +744,10 @@ const continueDimensionSetup = () => {
             description="Are you sure you want to delete this project? This action cannot be undone."
             confirm-text="Delete Project" cancel-text="Cancel" confirm-variant="destructive" @confirm="deleteProject" />
 
-        <ConfirmDialog :open="showDeleteMemberDialog" @update:open="(val) => {
-            showDeleteMemberDialog = val;
-            if (!val) memberToDelete = null;
-        }" title="Remove Team Member"
-            description="Are you sure you want to remove this team member from the project?" confirm-text="Remove"
-            cancel-text="Cancel" confirm-variant="destructive" @confirm="handleRemoveMember"
+        <ConfirmDialog :open="showDeleteMemberDialog"
+            @update:open="(val) => { showDeleteMemberDialog = val; if (!val) memberToDelete = null; }"
+            title="Remove Team Member" description="Are you sure you want to remove this team member from the project?"
+            confirm-text="Remove" cancel-text="Cancel" confirm-variant="destructive" @confirm="handleRemoveMember"
             @cancel="memberToDelete = null" />
     </AppLayout>
 </template>

@@ -22,49 +22,50 @@ class ProjectController extends Controller
         private ProjectService $projectService,
         private ProjectRepositoryInterface $projectRepository,
         private UserRepositoryInterface $userRepository
-    ) {}
+    ) {
+    }
 
     /**
      * Display a listing of projects for the authenticated user
      */
-    
-     public function index(Request $request): Response
-     {
-         $user = auth()->user();
-     
-         $filters = $request->all();
-         $pg = $this->projectService->paginateUserProjects($user, $filters);
-     
-         return Inertia::render('Admin/Projects/Index', [
-             'projects' => [
-                 // IMPORTANT: through(...)->items() returns a plain array, not the paginator object
-                 'data' => $pg->through(fn($p) => $this->projectService->transformProjectForIndexItem($p))->items(),
-                 'links' => $pg->linkCollection(),
-                 'meta' => [
-                     'current_page' => $pg->currentPage(),
-                     'last_page'    => $pg->lastPage(),
-                     'per_page'     => $pg->perPage(),     // ← add this
-                     'total'        => $pg->total(),
-                     'from'         => $pg->firstItem(),
-                     'to'           => $pg->lastItem(),
-                 ],
-             ],
-             'userRole' => $user->role,
-             'canCreateProject' => $user->isSystemAdmin() || $user->isProjectOwner(),
-             'statistics' => $this->projectService->calculateProjectStatistics(
-                 $this->projectService->getUserProjects($user)
-             ),
-             'filters' => [
-                 'q'         => $request->get('q',''),
-                 'status'    => $request->get('status'),
-                 'sort'      => $request->get('sort','created_at'),
-                 'direction' => $request->get('direction','desc'),
-                 // REMOVE perPage from filters so the client doesn’t keep sending it
-                 // 'perPage' => $request->get('perPage', 12),
-             ],
-         ]);
-     }
-     
+
+    public function index(Request $request): Response
+    {
+        $user = auth()->user();
+
+        $filters = $request->all();
+        $pg = $this->projectService->paginateUserProjects($user, $filters);
+
+        return Inertia::render('Admin/Projects/Index', [
+            'projects' => [
+                // IMPORTANT: through(...)->items() returns a plain array, not the paginator object
+                'data' => $pg->through(fn($p) => $this->projectService->transformProjectForIndexItem($p))->items(),
+                'links' => $pg->linkCollection(),
+                'meta' => [
+                    'current_page' => $pg->currentPage(),
+                    'last_page' => $pg->lastPage(),
+                    'per_page' => $pg->perPage(),     // ← add this
+                    'total' => $pg->total(),
+                    'from' => $pg->firstItem(),
+                    'to' => $pg->lastItem(),
+                ],
+            ],
+            'userRole' => $user->role,
+            'canCreateProject' => $user->isSystemAdmin() || $user->isProjectOwner(),
+            'statistics' => $this->projectService->calculateProjectStatistics(
+                $this->projectService->getUserProjects($user)
+            ),
+            'filters' => [
+                'q' => $request->get('q', ''),
+                'status' => $request->get('status'),
+                'sort' => $request->get('sort', 'created_at'),
+                'direction' => $request->get('direction', 'desc'),
+                // REMOVE perPage from filters so the client doesn’t keep sending it
+                // 'perPage' => $request->get('perPage', 12),
+            ],
+        ]);
+    }
+
 
     /**
      * Quick activate a project that has dimensions but is still in draft
@@ -92,7 +93,7 @@ class ProjectController extends Controller
     public function create(): Response
     {
         $user = auth()->user();
-        
+
         if (!$user->isSystemAdmin() && !$user->isProjectOwner()) {
             abort(403, 'You do not have permission to create projects.');
         }
@@ -122,14 +123,14 @@ class ProjectController extends Controller
     public function storeStepOne(Request $request): RedirectResponse
     {
         $user = auth()->user();
-        
+
         $rules = [
             'name' => 'required|string|max:255',
             'description' => 'nullable|string|max:1000',
             'annotation_guidelines' => 'nullable|string',
             'deadline' => 'nullable|date|after:today',
-            'task_time_minutes' => 'required|integer|min:5|max:180',
-            'review_time_minutes' => 'required|integer|min:5|max:60',
+            'task_time_minutes' => 'required|integer|min:5',
+            'review_time_minutes' => 'required|integer|min:5',
         ];
 
         if ($user->isSystemAdmin()) {
@@ -148,7 +149,7 @@ class ProjectController extends Controller
             $project = $this->projectService->createProjectStepOne($validated, $user, $owner);
 
             return redirect()->route('admin.projects.create.step-two', $project->id)
-                           ->with('success', 'Project basic info saved! Now configure annotation dimensions.');
+                ->with('success', 'Project basic info saved! Now configure annotation dimensions.');
 
         } catch (\Exception $e) {
             return back()->withErrors(['error' => 'Failed to create project. Please try again.']);
@@ -237,7 +238,7 @@ class ProjectController extends Controller
                         "dimensions.{$index}.scale_min" => 'Scale minimum and maximum are required for numeric dimensions.'
                     ]);
                 }
-                
+
                 if ($dimensionData['scale_min'] >= $dimensionData['scale_max']) {
                     return back()->withErrors([
                         "dimensions.{$index}.scale_max" => 'Scale maximum must be greater than minimum.'
@@ -255,7 +256,7 @@ class ProjectController extends Controller
                         }
                     }
                 }
-                
+
                 if (!$hasValidValues) {
                     return back()->withErrors([
                         "dimensions.{$index}.values" => 'Categorical dimensions must have at least one valid value.'
@@ -268,7 +269,7 @@ class ProjectController extends Controller
             $this->projectService->saveProjectDimensions($project, $validated['dimensions']);
 
             return redirect()->route('admin.projects.create.step-three', $project->id)
-                           ->with('success', 'Annotation dimensions configured successfully! Now review and finalize your project.');
+                ->with('success', 'Annotation dimensions configured successfully! Now review and finalize your project.');
 
         } catch (\Exception $e) {
             \Log::error('Failed to save project dimensions: ' . $e->getMessage());
@@ -344,7 +345,7 @@ class ProjectController extends Controller
             $this->projectService->finalizeProject($project);
 
             return redirect()->route('admin.projects.show', $project->id)
-                           ->with('success', 'Project created successfully and is now active!');
+                ->with('success', 'Project created successfully and is now active!');
 
         } catch (\Exception $e) {
             return back()->withErrors(['error' => $e->getMessage()]);
@@ -364,11 +365,11 @@ class ProjectController extends Controller
         }
 
         $dimensions = $project->annotationDimensions()->with('dimensionValues')->orderBy('display_order')->get();
-        
+
         // Redirect to index with message if project is draft and has no dimensions
         if ($project->status === 'draft' && $dimensions->count() === 0) {
             return redirect()->route('admin.projects.index')
-                           ->with('warning', "Project '{$project->name}' is incomplete. Please configure annotation dimensions to continue.");
+                ->with('warning', "Project '{$project->name}' is incomplete. Please configure annotation dimensions to continue.");
         }
 
         $projectData = $this->projectService->transformProjectForShow($project);
@@ -480,7 +481,7 @@ class ProjectController extends Controller
             $project = $this->projectService->updateProject($project, $validated, $user);
 
             return redirect()->route('admin.projects.show', $project)
-                           ->with('success', 'Project updated successfully!');
+                ->with('success', 'Project updated successfully!');
 
         } catch (\Exception $e) {
             return back()->withErrors(['error' => $e->getMessage()]);
@@ -543,7 +544,7 @@ class ProjectController extends Controller
             $this->projectService->deleteProject($project);
 
             return redirect()->route('admin.projects.index')
-                           ->with('success', 'Project deleted successfully!');
+                ->with('success', 'Project deleted successfully!');
 
         } catch (\Exception $e) {
             return back()->with('error', $e->getMessage());
@@ -598,7 +599,7 @@ class ProjectController extends Controller
         try {
             $this->projectService->updateProjectStatus($project, $validated['status']);
 
-            $statusMessage = match($validated['status']) {
+            $statusMessage = match ($validated['status']) {
                 'active' => 'Project activated successfully!',
                 'paused' => 'Project paused successfully!',
                 'completed' => 'Project marked as completed!',
@@ -630,7 +631,7 @@ class ProjectController extends Controller
             $duplicatedProject = $this->projectService->duplicateProject($project, $user);
 
             return redirect()->route('admin.projects.show', $duplicatedProject->id)
-                           ->with('success', 'Project duplicated successfully! You can now customize the copy.');
+                ->with('success', 'Project duplicated successfully! You can now customize the copy.');
 
         } catch (\Exception $e) {
             return back()->withErrors(['error' => 'Failed to duplicate project. Please try again.']);
@@ -676,12 +677,12 @@ class ProjectController extends Controller
     // Helper methods for permissions
     private function canEditProject(Project $project, User $user): bool
     {
-        return $user->isSystemAdmin() || 
-               $user->id === $project->owner_id ||
-               $project->members()->where('user_id', $user->id)
-                                 ->where('role', 'project_admin')
-                                 ->where('is_active', true)
-                                 ->exists();
+        return $user->isSystemAdmin() ||
+            $user->id === $project->owner_id ||
+            $project->members()->where('user_id', $user->id)
+                ->where('role', 'project_admin')
+                ->where('is_active', true)
+                ->exists();
     }
 
     private function canDeleteProject(Project $project, User $user): bool
@@ -691,12 +692,12 @@ class ProjectController extends Controller
 
     private function canManageTeam(Project $project, User $user): bool
     {
-        return $user->isSystemAdmin() || 
-               $user->id === $project->owner_id ||
-               $project->members()->where('user_id', $user->id)
-                                 ->where('role', 'project_admin')
-                                 ->where('is_active', true)
-                                 ->exists();
+        return $user->isSystemAdmin() ||
+            $user->id === $project->owner_id ||
+            $project->members()->where('user_id', $user->id)
+                ->where('role', 'project_admin')
+                ->where('is_active', true)
+                ->exists();
     }
 
     private function canViewProject(Project $project, User $user): bool
@@ -713,7 +714,7 @@ class ProjectController extends Controller
 
         // Project members can view projects they're part of
         return $project->members()->where('user_id', $user->id)
-                                 ->where('is_active', true)
-                                 ->exists();
+            ->where('is_active', true)
+            ->exists();
     }
 }

@@ -17,7 +17,8 @@ class ProjectService
     public function __construct(
         private ProjectRepositoryInterface $projectRepository,
         private UserRepositoryInterface $userRepository
-    ) {}
+    ) {
+    }
 
     /**
      * Get projects for the authenticated user based on their role
@@ -27,51 +28,51 @@ class ProjectService
         if ($user->isSystemAdmin()) {
             return $this->projectRepository->all();
         }
-        
+
         return $this->projectRepository->getUserProjects($user);
     }
 
     public function paginateUserProjects(User $user, array $filters)
     {
-        $query = Project::with(['owner','members','tasks.audioFile','annotationDimensions']);
+        $query = Project::with(['owner', 'members', 'tasks.audioFile', 'annotationDimensions']);
         if (!$user->isSystemAdmin()) {
             $query->where(function ($q) use ($user) {
                 $q->where('owner_id', $user->id)
-                  ->orWhereHas('members', fn($mq) => $mq->where('user_id', $user->id)->where('is_active', true));
+                    ->orWhereHas('members', fn($mq) => $mq->where('user_id', $user->id)->where('is_active', true));
             });
         }
-    
+
         if (!empty($filters['q'])) {
-            $like = '%'.$filters['q'].'%';
-            $query->where(fn($q) => $q->where('name','like',$like)->orWhere('description','like',$like));
+            $like = '%' . $filters['q'] . '%';
+            $query->where(fn($q) => $q->where('name', 'like', $like)->orWhere('description', 'like', $like));
         }
-    
+
         if (!empty($filters['status'])) {
             $query->where('status', $filters['status']);
         }
-    
+
         $sort = $filters['sort'] ?? 'created_at';
         $direction = $filters['direction'] ?? 'desc';
         $query->orderBy($sort, $direction);
-    
+
         // fixed size
         return $query->paginate(10)->withQueryString();
     }
-    
-    
+
+
 
     /**
      * Transform projects for index display
      */
-/**
- * Collection helper that reuses the single-item transformer.
- */
-public function transformProjectsForIndex(Collection $projects): array
-{
-    return $projects
-        ->map(fn (Project $p) => $this->transformProjectForIndexItem($p))
-        ->toArray();
-}
+    /**
+     * Collection helper that reuses the single-item transformer.
+     */
+    public function transformProjectsForIndex(Collection $projects): array
+    {
+        return $projects
+            ->map(fn(Project $p) => $this->transformProjectForIndexItem($p))
+            ->toArray();
+    }
 
     /**
      * Calculate project statistics for index page
@@ -83,7 +84,7 @@ public function transformProjectsForIndex(Collection $projects): array
             'active_projects' => $projects->where('status', 'active')->count(),
             'completed_projects' => $projects->where('status', 'completed')->count(),
             'draft_projects' => $projects->where('status', 'draft')->count(),
-            'incomplete_projects' => $projects->filter(function($project) {
+            'incomplete_projects' => $projects->filter(function ($project) {
                 return !$project->annotationDimensions()->exists() || $project->status === 'draft';
             })->count(),
         ];
@@ -96,11 +97,11 @@ public function transformProjectsForIndex(Collection $projects): array
         if (!$hasDimensions) {
             return 2; // Need to configure dimensions
         }
-        
+
         if ($project->status === 'draft') {
             return 3; // Ready for review and activation
         }
-        
+
         return 0; // Setup complete (active project)
     }
 
@@ -190,7 +191,7 @@ public function transformProjectsForIndex(Collection $projects): array
     public function transformProjectForShow(Project $project): array
     {
         $statistics = $this->projectRepository->getProjectStatistics($project);
-        
+        $batchStats = $project->getBatchStatistics();
         return [
             'id' => $project->id,
             'name' => $project->name,
@@ -202,6 +203,7 @@ public function transformProjectsForIndex(Collection $projects): array
             'task_time_minutes' => $project->task_time_minutes,
             'review_time_minutes' => $project->review_time_minutes,
             'annotation_guidelines' => $project->annotation_guidelines,
+            'total_batches' => $batchStats['total_batches'],
             'deadline' => $project->deadline?->format('Y-m-d'),
             'owner' => [
                 'id' => $project->owner->id,
@@ -267,13 +269,15 @@ public function transformProjectsForIndex(Collection $projects): array
                 throw new \Exception('Cannot activate project without annotation dimensions. Please add dimensions first.');
             }
 
-            if ($user->isSystemAdmin() && 
-                isset($data['owner_id']) && 
-                $data['owner_id'] != $project->owner_id) {
-                
+            if (
+                $user->isSystemAdmin() &&
+                isset($data['owner_id']) &&
+                $data['owner_id'] != $project->owner_id
+            ) {
+
                 $newOwner = $this->userRepository->findOrFail($data['owner_id']);
                 unset($data['owner_id']);
-                
+
                 $project = $this->projectRepository->update($project->id, $data);
                 $project = $this->projectRepository->assignToOwner($project, $newOwner, $user);
             } else {
@@ -373,7 +377,7 @@ public function transformProjectsForIndex(Collection $projects): array
     {
         // Get users who are not already members and are not system admins
         $existingMemberIds = $project->members()->pluck('user_id')->toArray();
-        
+
         return $this->userRepository->getActiveUsers()
             ->whereNotIn('id', $existingMemberIds)
             ->where('role', '!=', 'system_admin')
@@ -413,7 +417,7 @@ public function transformProjectsForIndex(Collection $projects): array
         $member = $project->members()->whereKey($memberId)->firstOrFail();
 
         // normalize
-        $role     = $data['role'];
+        $role = $data['role'];
         $isActive = array_key_exists('is_active', $data) ? (bool) $data['is_active'] : (bool) $member->is_active;
 
         // allow null; otherwise 1..50
@@ -425,7 +429,8 @@ public function transformProjectsForIndex(Collection $projects): array
                     'workload_limit' => 'Workload must be at least 1, or leave it empty.',
                 ]);
             }
-            if ($workload > 50) $workload = 50;
+            if ($workload > 50)
+                $workload = 50;
         }
 
         DB::transaction(function () use ($member, $role, $isActive, $workload) {
@@ -506,61 +511,61 @@ public function transformProjectsForIndex(Collection $projects): array
         $this->projectRepository->update($project->id, ['status' => 'active']);
     }
     /**
- * Transform ONE project row for the index (works with paginator->through()).
- */
-public function transformProjectForIndexItem(Project $project): array
-{
-    // Use eager-loaded relations when available to avoid N+1s
-    $tasks   = $project->relationLoaded('tasks') ? $project->tasks : $project->tasks()->with('audioFile')->get();
-    $members = $project->relationLoaded('members') ? $project->members : $project->members()->get();
+     * Transform ONE project row for the index (works with paginator->through()).
+     */
+    public function transformProjectForIndexItem(Project $project): array
+    {
+        // Use eager-loaded relations when available to avoid N+1s
+        $tasks = $project->relationLoaded('tasks') ? $project->tasks : $project->tasks()->with('audioFile')->get();
+        $members = $project->relationLoaded('members') ? $project->members : $project->members()->get();
 
-    $audioFilesCount = $tasks
-        ->map(fn ($t) => $t->audioFile)
-        ->filter()
-        ->unique('id')
-        ->count();
+        $audioFilesCount = $tasks
+            ->map(fn($t) => $t->audioFile)
+            ->filter()
+            ->unique('id')
+            ->count();
 
-    // Dimensions (prefer loaded relation if present)
-    if ($project->relationLoaded('annotationDimensions')) {
-        $hasDimensions   = $project->annotationDimensions->isNotEmpty();
-        $dimensionsCount = $project->annotationDimensions->count();
-    } else {
-        $hasDimensions   = $project->annotationDimensions()->exists();
-        $dimensionsCount = $project->annotationDimensions()->count();
+        // Dimensions (prefer loaded relation if present)
+        if ($project->relationLoaded('annotationDimensions')) {
+            $hasDimensions = $project->annotationDimensions->isNotEmpty();
+            $dimensionsCount = $project->annotationDimensions->count();
+        } else {
+            $hasDimensions = $project->annotationDimensions()->exists();
+            $dimensionsCount = $project->annotationDimensions()->count();
+        }
+
+        $isIncomplete = !$hasDimensions || $project->status === 'draft';
+        $canBeActivated = $hasDimensions && $project->status === 'draft';
+
+        return [
+            'id' => $project->id,
+            'name' => $project->name,
+            'description' => $project->description,
+            'status' => $project->status,
+            'project_type' => 'audio',
+            'completion_percentage' => $project->completion_percentage,
+            'team_size' => $members->count(),
+            'task_time_minutes' => $project->task_time_minutes,
+            'review_time_minutes' => $project->review_time_minutes,
+            'audio_files_count' => $audioFilesCount,
+            'tasks_count' => $tasks->count(),
+            'dimensions_count' => $dimensionsCount,
+            'owner' => [
+                'id' => $project->owner->id,
+                'name' => $project->owner->full_name,
+                'email' => $project->owner->email,
+            ],
+            'deadline' => $project->deadline?->format('Y-m-d'),
+            'created_at' => $project->created_at->format('Y-m-d H:i'),
+            'updated_at' => $project->updated_at->format('Y-m-d H:i'),
+
+            // setup helpers
+            'has_dimensions' => $hasDimensions,
+            'is_setup_incomplete' => $isIncomplete,
+            'can_be_activated' => $canBeActivated,
+            'setup_step' => $this->determineSetupStep($project, $hasDimensions),
+        ];
     }
-
-    $isIncomplete   = !$hasDimensions || $project->status === 'draft';
-    $canBeActivated = $hasDimensions && $project->status === 'draft';
-
-    return [
-        'id' => $project->id,
-        'name' => $project->name,
-        'description' => $project->description,
-        'status' => $project->status,
-        'project_type' => 'audio',
-        'completion_percentage' => $project->completion_percentage,
-        'team_size' => $members->count(),
-        'task_time_minutes' => $project->task_time_minutes,
-        'review_time_minutes' => $project->review_time_minutes,
-        'audio_files_count' => $audioFilesCount,
-        'tasks_count' => $tasks->count(),
-        'dimensions_count' => $dimensionsCount,
-        'owner' => [
-            'id' => $project->owner->id,
-            'name' => $project->owner->full_name,
-            'email' => $project->owner->email,
-        ],
-        'deadline' => $project->deadline?->format('Y-m-d'),
-        'created_at' => $project->created_at->format('Y-m-d H:i'),
-        'updated_at' => $project->updated_at->format('Y-m-d H:i'),
-
-        // setup helpers
-        'has_dimensions' => $hasDimensions,
-        'is_setup_incomplete' => $isIncomplete,
-        'can_be_activated' => $canBeActivated,
-        'setup_step' => $this->determineSetupStep($project, $hasDimensions),
-    ];
-}
 
 
 

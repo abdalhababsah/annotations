@@ -11,12 +11,12 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { type BreadcrumbItem } from '@/types';
 import { Head, useForm, Link } from '@inertiajs/vue3';
 import { computed } from 'vue';
-import { 
-  ArrowLeft, 
-  ArrowRight, 
-  Clock, 
-  Users, 
-  FileAudio, 
+import {
+  ArrowLeft,
+  ArrowRight,
+  Clock,
+  Users,
+  FileAudio,
   Settings,
   AlertCircle,
   CheckCircle2
@@ -55,9 +55,9 @@ const form = useForm({
 
 // Validation
 const isFormValid = computed(() => {
-  return form.name.trim().length > 0 && 
-         form.task_time_minutes >= 5 && 
-         form.review_time_minutes >= 5;
+  return form.name.trim().length > 0 &&
+    form.task_time_minutes >= 5 &&
+    form.review_time_minutes >= 5;
 });
 
 // Submit step 1
@@ -77,6 +77,7 @@ const formatTime = (minutes: number) => {
 </script>
 
 <template>
+
   <Head title="Create Project" />
 
   <AppLayout :breadcrumbs="breadcrumbs">
@@ -90,10 +91,10 @@ const formatTime = (minutes: number) => {
           </p>
         </div>
         <Link :href="route('admin.projects.index')">
-          <Button variant="outline" size="sm">
-            <ArrowLeft class="mr-2 h-4 w-4" />
-            Back to Projects
-          </Button>
+        <Button variant="outline" size="sm">
+          <ArrowLeft class="mr-2 h-4 w-4" />
+          Back to Projects
+        </Button>
         </Link>
       </div>
 
@@ -102,28 +103,31 @@ const formatTime = (minutes: number) => {
         <div class="flex items-center space-x-4 w-full">
           <!-- Step 1 - Active -->
           <div class="flex items-center">
-            <div class="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white text-sm font-medium">
+            <div
+              class="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white text-sm font-medium">
               <span v-if="!isFormValid">1</span>
               <CheckCircle2 v-else class="w-4 h-4" />
             </div>
             <span class="ml-2 text-sm font-medium text-blue-600">Basic Info</span>
           </div>
-          
+
           <Separator class="flex-1" />
-          
+
           <!-- Step 2 - Inactive -->
           <div class="flex items-center">
-            <div class="flex items-center justify-center w-8 h-8 rounded-full bg-gray-200 text-gray-600 text-sm font-medium">
+            <div
+              class="flex items-center justify-center w-8 h-8 rounded-full bg-gray-200 text-gray-600 text-sm font-medium">
               2
             </div>
             <span class="ml-2 text-sm font-medium text-gray-600">Dimensions</span>
           </div>
-          
+
           <Separator class="flex-1" />
-          
+
           <!-- Step 3 - Inactive -->
           <div class="flex items-center">
-            <div class="flex items-center justify-center w-8 h-8 rounded-full bg-gray-200 text-gray-600 text-sm font-medium">
+            <div
+              class="flex items-center justify-center w-8 h-8 rounded-full bg-gray-200 text-gray-600 text-sm font-medium">
               3
             </div>
             <span class="ml-2 text-sm font-medium text-gray-600">Review</span>
@@ -145,14 +149,8 @@ const formatTime = (minutes: number) => {
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div class="space-y-2">
                 <Label for="name">Project Name *</Label>
-                <Input
-                  id="name"
-                  v-model="form.name"
-                  placeholder="Enter project name"
-                  class="w-full"
-                  :class="{ 'border-red-500': form.errors.name }"
-                  required
-                />
+                <Input id="name" v-model="form.name" placeholder="Enter project name" class="w-full"
+                  :class="{ 'border-red-500': form.errors.name }" required />
                 <p v-if="form.errors.name" class="text-sm text-red-600">
                   {{ form.errors.name }}
                 </p>
@@ -167,11 +165,7 @@ const formatTime = (minutes: number) => {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem :value="null">Assign to myself</SelectItem>
-                    <SelectItem 
-                      v-for="owner in projectOwners" 
-                      :key="owner.id" 
-                      :value="owner.id"
-                    >
+                    <SelectItem v-for="owner in projectOwners" :key="owner.id" :value="owner.id">
                       {{ owner.name }} ({{ owner.email }})
                     </SelectItem>
                   </SelectContent>
@@ -185,13 +179,8 @@ const formatTime = (minutes: number) => {
             <!-- Description -->
             <div class="space-y-2">
               <Label for="description">Description</Label>
-              <Textarea
-                id="description"
-                v-model="form.description"
-                placeholder="Describe your audio annotation project..."
-                rows="3"
-                class="w-full"
-              />
+              <Textarea id="description" v-model="form.description"
+                placeholder="Describe your audio annotation project..." rows="3" class="w-full" />
               <p class="text-sm text-muted-foreground">
                 Brief overview of what this project is about
               </p>
@@ -203,29 +192,23 @@ const formatTime = (minutes: number) => {
                 <Clock class="h-5 w-5 text-blue-500" />
                 <h3 class="text-lg font-medium">Time Limits</h3>
               </div>
-              
+
               <Alert>
                 <AlertCircle class="h-4 w-4" />
                 <AlertDescription>
-                  Set time limits for annotation tasks and reviews. Users will be automatically logged out when time expires.
+                  Set time limits for annotation tasks and reviews. Users will be automatically logged out when time
+                  expires.
                 </AlertDescription>
               </Alert>
-              
+
               <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div class="space-y-2">
                   <Label for="task_time_minutes" class="flex items-center gap-2">
                     <FileAudio class="h-4 w-4" />
                     Task Time Limit (minutes) *
                   </Label>
-                  <Input
-                    id="task_time_minutes"
-                    v-model.number="form.task_time_minutes"
-                    type="number"
-                    min="5"
-                    max="180"
-                    class="w-full"
-                    :class="{ 'border-red-500': form.errors.task_time_minutes }"
-                  />
+                  <Input id="task_time_minutes" v-model.number="form.task_time_minutes" type="number" min="5" max="180"
+                    class="w-full" :class="{ 'border-red-500': form.errors.task_time_minutes }" />
                   <p class="text-sm text-muted-foreground">
                     ⏱️ {{ formatTime(form.task_time_minutes) }} per annotation task
                   </p>
@@ -239,15 +222,8 @@ const formatTime = (minutes: number) => {
                     <Users class="h-4 w-4" />
                     Review Time Limit (minutes) *
                   </Label>
-                  <Input
-                    id="review_time_minutes"
-                    v-model.number="form.review_time_minutes"
-                    type="number"
-                    min="5"
-                    max="60"
-                    class="w-full"
-                    :class="{ 'border-red-500': form.errors.review_time_minutes }"
-                  />
+                  <Input id="review_time_minutes" v-model.number="form.review_time_minutes" type="number" min="5"
+                    max="60" class="w-full" :class="{ 'border-red-500': form.errors.review_time_minutes }" />
                   <p class="text-sm text-muted-foreground">
                     ⏱️ {{ formatTime(form.review_time_minutes) }} per review
                   </p>
@@ -261,13 +237,8 @@ const formatTime = (minutes: number) => {
             <!-- Deadline -->
             <div class="space-y-2">
               <Label for="deadline">Project Deadline (Optional)</Label>
-              <Input
-                id="deadline"
-                v-model="form.deadline"
-                type="date"
-                class="w-full"
-                :min="new Date().toISOString().split('T')[0]"
-              />
+              <Input id="deadline" v-model="form.deadline" type="date" class="w-full"
+                :min="new Date().toISOString().split('T')[0]" />
               <p class="text-sm text-muted-foreground">
                 Set an overall deadline for project completion
               </p>
@@ -276,13 +247,8 @@ const formatTime = (minutes: number) => {
             <!-- Annotation Guidelines -->
             <div class="space-y-2">
               <Label for="annotation_guidelines">Annotation Guidelines</Label>
-              <Textarea
-                id="annotation_guidelines"
-                v-model="form.annotation_guidelines"
-                placeholder="Provide detailed instructions for annotators..."
-                rows="4"
-                class="w-full"
-              />
+              <Textarea id="annotation_guidelines" v-model="form.annotation_guidelines"
+                placeholder="Provide detailed instructions for annotators..." rows="4" class="w-full" />
               <p class="text-sm text-muted-foreground">
                 Detailed instructions that will help annotators understand what to evaluate in the audio files
               </p>
@@ -292,7 +258,8 @@ const formatTime = (minutes: number) => {
             <Alert v-if="!isFormValid" variant="destructive">
               <AlertCircle class="h-4 w-4" />
               <AlertDescription>
-                Please fill in all required fields: project name, task time limit (5-180 min), and review time limit (5-60 min).
+                Please fill in all required fields: project name, task time limit (5-180 min), and review time limit
+                (5-60 min).
               </AlertDescription>
             </Alert>
 
@@ -309,16 +276,12 @@ const formatTime = (minutes: number) => {
             <!-- Navigation -->
             <div class="flex items-center justify-between pt-6 border-t">
               <Link :href="route('admin.projects.index')">
-                <Button variant="outline" type="button">
-                  Cancel
-                </Button>
+              <Button variant="outline" type="button">
+                Cancel
+              </Button>
               </Link>
-              
-              <Button 
-                type="submit" 
-                :disabled="!isFormValid || form.processing"
-                class="flex items-center gap-2"
-              >
+
+              <Button type="submit" :disabled="!isFormValid || form.processing" class="flex items-center gap-2">
                 <span>{{ form.processing ? 'Saving...' : 'Next: Configure Dimensions' }}</span>
                 <ArrowRight class="h-4 w-4" />
               </Button>

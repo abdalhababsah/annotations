@@ -99,7 +99,6 @@ const submit = () => {
             <SelectGroup>
               <SelectItem value="annotator">Annotator</SelectItem>
               <SelectItem value="reviewer">Reviewer</SelectItem>
-              <SelectItem value="project_admin">Project Admin</SelectItem>
             </SelectGroup>
           </SelectContent>
         </Select>

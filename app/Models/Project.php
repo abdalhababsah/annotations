@@ -1,5 +1,5 @@
 <?php
-// Project.php
+// Updated Project.php with Batch relationship
 
 namespace App\Models;
 
@@ -64,6 +64,16 @@ class Project extends Model
         return $this->hasMany(Task::class);
     }
 
+    public function batches()
+    {
+        return $this->hasMany(Batch::class);
+    }
+
+    public function skipActivities()
+    {
+        return $this->hasMany(SkipActivity::class);
+    }
+
     // Scopes
     public function scopeActive($query)
     {
@@ -101,24 +111,31 @@ class Project extends Model
         return $this->members()->where('role', 'reviewer')->where('is_active', true)->get();
     }
 
-
-    // Get next available task for user (excludes skipped tasks)
+    // Get next available task for user from published/in-progress batches (excludes skipped tasks)
     public function getNextTaskForUser($userId)
     {
         $skippedTaskIds = SkipActivity::getSkippedTasksForUser($userId, $this->id);
 
         return $this->tasks()
             ->where('status', 'pending')
+            ->whereHas('batch', function ($query) {
+                $query->whereIn('status', ['published', 'in_progress']);
+            })
             ->whereNotIn('id', $skippedTaskIds)
             ->first();
     }
 
-    // Assign task to user with time limit
+    // Assign task to user with time limit (only from published/in-progress batches)
     public function assignTaskToUser($taskId, $userId)
     {
-        $task = $this->tasks()->find($taskId);
+        $task = $this->tasks()->with('batch')->find($taskId);
 
         if (!$task || $task->status !== 'pending') {
+            return false;
+        }
+
+        // Check if task's batch allows assignment
+        if (!$task->batch || !in_array($task->batch->status, ['published', 'in_progress'])) {
             return false;
         }
 
@@ -135,6 +152,11 @@ class Project extends Model
             'expires_at' => now()->addMinutes($this->task_time_minutes),
         ]);
 
+        // Update batch status to in_progress if it was published
+        if ($task->batch->status === 'published') {
+            $task->batch->update(['status' => 'in_progress']);
+        }
+
         return $task;
     }
 
@@ -148,7 +170,10 @@ class Project extends Model
             ->toArray();
 
         return Annotation::whereHas('task', function ($query) {
-            $query->where('project_id', $this->id);
+            $query->where('project_id', $this->id)
+                  ->whereHas('batch', function ($batchQuery) {
+                      $batchQuery->whereIn('status', ['published', 'in_progress']);
+                  });
         })
             ->where('status', 'submitted')
             ->whereNotIn('id', $skippedAnnotationIds)
@@ -159,7 +184,10 @@ class Project extends Model
     public function assignReviewToUser($annotationId, $userId)
     {
         $annotation = Annotation::whereHas('task', function ($query) {
-            $query->where('project_id', $this->id);
+            $query->where('project_id', $this->id)
+                  ->whereHas('batch', function ($batchQuery) {
+                      $batchQuery->whereIn('status', ['published', 'in_progress']);
+                  });
         })
             ->where('id', $annotationId)
             ->where('status', 'submitted')
@@ -187,8 +215,31 @@ class Project extends Model
 
         return $review;
     }
-    public function skipActivities()
-{
-    return $this->hasMany(SkipActivity::class);
-}
+
+    // Get batch-related project statistics
+    public function getBatchStatistics()
+    {
+        return [
+            'total_batches' => $this->batches()->count(),
+            'draft_batches' => $this->batches()->where('status', 'draft')->count(),
+            'published_batches' => $this->batches()->where('status', 'published')->count(),
+            'in_progress_batches' => $this->batches()->where('status', 'in_progress')->count(),
+            'completed_batches' => $this->batches()->where('status', 'completed')->count(),
+            'paused_batches' => $this->batches()->where('status', 'paused')->count(),
+            'total_tasks_in_batches' => $this->batches()->sum('total_tasks'),
+            'completed_tasks_in_batches' => $this->batches()->sum('completed_tasks'),
+        ];
+    }
+
+    // Get available batches for work
+    public function getAvailableBatches()
+    {
+        return $this->batches()
+                   ->whereIn('status', ['published', 'in_progress'])
+                   ->where('total_tasks', '>', 'completed_tasks')
+                   ->with(['tasks' => function ($query) {
+                       $query->where('status', 'pending');
+                   }])
+                   ->get();
+    }
 }

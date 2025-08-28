@@ -1,4 +1,3 @@
-<!-- resources/js/Pages/Admin/Projects/Index.vue -->
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -104,15 +103,7 @@ interface Props {
 
 /* ===================== Props / Page ===================== */
 const props = defineProps<Props>()
-const page = usePage<{
-  flash?: {
-    success?: string | null
-    error?: string | null
-    warning?: string | null
-    info?: string | null
-    errors?: Record<string, string[]>
-  }
-}>()
+
 
 /* ===================== UI State (server-driven) ===================== */
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'Projects', href: '/admin/projects' }]
@@ -202,23 +193,6 @@ const continueSetup = (project: Project) => {
 
   <AppLayout :breadcrumbs="breadcrumbs">
     <div class="flex h-full flex-1 flex-col gap-6 p-6">
-      <!-- Flash Messages -->
-      <div v-if="page.props.flash?.success"
-           class="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-800">
-        {{ page.props.flash.success }}
-      </div>
-      <div v-if="page.props.flash?.warning"
-           class="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-        {{ page.props.flash.warning }}
-      </div>
-      <div v-if="page.props.flash?.error"
-           class="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-        {{ page.props.flash.error }}
-      </div>
-      <div v-if="page.props.flash?.info"
-           class="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
-        {{ page.props.flash.info }}
-      </div>
 
       <!-- Header -->
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -519,7 +493,7 @@ const continueSetup = (project: Project) => {
               <TableHead>Tasks</TableHead>
               <TableHead>Files</TableHead>
               <TableHead>Owner</TableHead>
-              <TableHead>Actions</TableHead>
+              <TableHead class="text-center">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -594,7 +568,7 @@ const continueSetup = (project: Project) => {
                 {{ project.owner.name }}
               </TableCell>
 
-              <TableCell class="space-x-2 text-right">
+              <TableCell class="space-x-2 text-center">
                 <template v-if="project.is_setup_incomplete">
                   <Button size="sm" @click="continueSetup(project)">
                     <component :is="getSetupStepIcon(project.setup_step)" class="mr-2 h-4 w-4" />

@@ -1,5 +1,5 @@
 <?php
-// Updated Task.php - REMOVED SKIP FIELDS
+// Updated Task.php with Batch relationship
 
 namespace App\Models;
 
@@ -13,6 +13,7 @@ class Task extends Model
 
     protected $fillable = [
         'project_id',
+        'batch_id',
         'audio_file_id',
         'assigned_to',
         'status',
@@ -33,6 +34,11 @@ class Task extends Model
     public function project()
     {
         return $this->belongsTo(Project::class);
+    }
+
+    public function batch()
+    {
+        return $this->belongsTo(Batch::class);
     }
 
     public function audioFile()
@@ -57,8 +63,7 @@ class Task extends Model
 
     public function skipActivities()
     {
-        return $this->hasMany(SkipActivity::class, 'audio_file_id', 'audio_file_id')
-                    ->where('activity_type', 'task');
+        return $this->hasMany(SkipActivity::class, 'task_id');
     }
 
     // Scopes
@@ -92,6 +97,13 @@ class Task extends Model
         return $query->whereIn('status', ['assigned', 'in_progress']);
     }
 
+    public function scopeFromPublishedBatches($query)
+    {
+        return $query->whereHas('batch', function ($q) {
+            $q->whereIn('status', ['published', 'in_progress']);
+        });
+    }
+
     // Helper methods
     public function isExpired()
     {
@@ -109,7 +121,12 @@ class Task extends Model
 
     public function canBeStarted()
     {
-        return $this->status === 'assigned' && !$this->isExpired();
+        return $this->status === 'assigned' && !$this->isExpired() && $this->batch && $this->batch->isInProgress();
+    }
+
+    public function canBeAssigned()
+    {
+        return $this->status === 'pending' && $this->batch && $this->batch->isInProgress();
     }
 
     // Skip logic - creates skip record and resets task
@@ -134,13 +151,16 @@ class Task extends Model
         return SkipActivity::hasUserSkippedTask($userId, $this->id);
     }
 
-    // Get available tasks for user (excluding skipped ones)
+    // Get available tasks for user (only from published batches, excluding skipped ones)
     public static function getAvailableTasksForUser($userId, $projectId)
     {
         $skippedTaskIds = SkipActivity::getSkippedTasksForUser($userId, $projectId);
         
         return static::where('project_id', $projectId)
                     ->where('status', 'pending')
+                    ->whereHas('batch', function ($query) {
+                        $query->whereIn('status', ['published', 'in_progress']);
+                    })
                     ->whereNotIn('id', $skippedTaskIds)
                     ->get();
     }
@@ -157,5 +177,29 @@ class Task extends Model
                 'expires_at' => null,
             ]);
         }
+    }
+
+    // Boot method to update batch statistics when task changes
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::updated(function ($task) {
+            if ($task->batch && $task->isDirty('status')) {
+                $task->batch->updateStatistics();
+            }
+        });
+
+        static::created(function ($task) {
+            if ($task->batch) {
+                $task->batch->updateStatistics();
+            }
+        });
+
+        static::deleted(function ($task) {
+            if ($task->batch) {
+                $task->batch->updateStatistics();
+            }
+        });
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+
 use Illuminate\Support\ServiceProvider;
 
 // Repository Interfaces
@@ -15,6 +16,7 @@ use App\Repositories\Contracts\SkipActivityRepositoryInterface;
 use App\Repositories\Contracts\AudioFileRepositoryInterface;
 use App\Repositories\Contracts\DimensionValueRepositoryInterface;
 use App\Repositories\Contracts\AnnotationDimensionRepositoryInterface;
+use App\Repositories\Contracts\BatchRepositoryInterface;
 
 // Repository Implementations
 use App\Repositories\ProjectRepository;
@@ -26,8 +28,11 @@ use App\Repositories\SkipActivityRepository;
 use App\Repositories\AudioFileRepository;
 use App\Repositories\DimensionValueRepository;
 use App\Repositories\AnnotationDimensionRepository;
+use App\Repositories\BatchRepository;
+
 
 // Models
+use App\Models\Batch;
 use App\Models\Project;
 use App\Models\User;
 use App\Models\Task;
@@ -48,6 +53,9 @@ class RepositoryServiceProvider extends ServiceProvider
         // Bind repository interfaces to their implementations
         $this->app->bind(ProjectRepositoryInterface::class, function ($app) {
             return new ProjectRepository(new Project());
+        });
+        $this->app->bind(BatchRepositoryInterface::class, function ($app) {
+            return new BatchRepository(new Batch());
         });
 
         $this->app->bind(UserRepositoryInterface::class, function ($app) {

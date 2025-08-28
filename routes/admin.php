@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\BatchController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\ProjectController;
 use App\Http\Controllers\Admin\ProjectMembersController;
@@ -77,105 +78,36 @@ Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function () 
             Route::patch('/{task}/unassign', [TaskController::class, 'unassign'])->name('unassign');
             Route::post('/bulk-assign', [TaskController::class, 'bulkAssign'])->name('bulk-assign');
         });
+
+        // Add this inside the projects prefix group, after the task routes
+
+        // ===== PROJECT BATCH ROUTES =====
+        Route::prefix('{project}/batches')->name('batches.')->group(function () {
+            // Main CRUD routes
+            Route::get('/', [BatchController::class, 'index'])->name('index');
+            Route::get('/create', [BatchController::class, 'create'])->name('create');
+            Route::post('/', [BatchController::class, 'store'])->name('store');
+            Route::get('/{batch}', [BatchController::class, 'show'])->name('show');
+            Route::get('/{batch}/edit', [BatchController::class, 'edit'])->name('edit');
+            Route::patch('/{batch}', [BatchController::class, 'update'])->name('update');
+            Route::delete('/{batch}', [BatchController::class, 'destroy'])->name('destroy');
+
+            // Batch status management
+            Route::post('/{batch}/publish', [BatchController::class, 'publish'])->name('publish');
+            Route::post('/{batch}/pause', [BatchController::class, 'pause'])->name('pause');
+            Route::post('/{batch}/resume', [BatchController::class, 'resume'])->name('resume');
+
+            // Task management within batches
+            Route::post('/{batch}/add-tasks', [BatchController::class, 'addTasks'])->name('add-tasks');
+            Route::delete('/{batch}/tasks/{task}', [BatchController::class, 'removeTask'])->name('remove-task');
+
+            // Batch utilities
+            Route::post('/{batch}/duplicate', [BatchController::class, 'duplicate'])->name('duplicate');
+            Route::get('/{batch}/progress', [BatchController::class, 'progress'])->name('progress');
+            Route::get('/statistics', [BatchController::class, 'statistics'])->name('statistics');
+
+            // Bulk operations
+            Route::post('/bulk-create', [BatchController::class, 'bulkCreate'])->name('bulk-create');
+        });
     });
 });
-
-// =====================================================
-// ROUTE SUMMARY AND DOCUMENTATION
-// =====================================================
-
-/*
-COMPLETE PROJECT ROUTES LIST:
-
-## MAIN PROJECT MANAGEMENT
-GET    /admin/projects                           → index (List all projects)
-GET    /admin/projects/create                    → create (Show create form - Step 1)
-GET    /admin/projects/{project}                 → show (Show project details)
-GET    /admin/projects/{project}/edit            → edit (Edit project form)
-PATCH  /admin/projects/{project}                 → update (Update project)
-DELETE /admin/projects/{project}                 → destroy (Delete project)
-
-## PROJECT CREATION WIZARD (3-Step Process)
-POST   /admin/projects/store-step-one            → storeStepOne (Save basic info)
-GET    /admin/projects/{project}/step-two        → createStepTwo (Configure dimensions)
-POST   /admin/projects/{project}/store-step-two  → storeStepTwo (Save dimensions)
-GET    /admin/projects/{project}/step-three      → createStepThree (Review & finalize)
-POST   /admin/projects/{project}/finalize        → finalizeProject (Activate project)
-
-## PROJECT STATUS MANAGEMENT
-POST   /admin/projects/{project}/quick-activate  → quickActivate (Quick activation for ready projects)
-PATCH  /admin/projects/{project}/status          → updateStatus (Update project status)
-POST   /admin/projects/{project}/archive         → archive (Archive project)
-POST   /admin/projects/{project}/restore         → restore (Restore from archive)
-
-## PROJECT UTILITIES
-POST   /admin/projects/{project}/duplicate       → duplicate (Duplicate project structure)
-GET    /admin/projects/{project}/setup-status    → getSetupStatus (API: Check setup status)
-
-## TEAM MANAGEMENT
-GET    /admin/projects/{project}/available-users → getAvailableUsers (API: Get available users)
-POST   /admin/projects/{project}/members         → addMember (Add team member)
-DELETE /admin/projects/{project}/members/{member} → removeMember (Remove team member)
-
-## TASK MANAGEMENT (Within Projects)
-GET    /admin/projects/{project}/tasks           → TaskController@index (List project tasks)
-GET    /admin/projects/{project}/tasks/{task}    → TaskController@show (Show task details)
-PATCH  /admin/projects/{project}/tasks/{task}/assign → TaskController@assign (Assign task)
-PATCH  /admin/projects/{project}/tasks/{task}/unassign → TaskController@unassign (Unassign task)
-POST   /admin/projects/{project}/tasks/bulk-assign → TaskController@bulkAssign (Bulk assign tasks)
-
-## ROUTE NAMING CONVENTION
-All routes are prefixed with 'admin.projects.' for consistency:
-- admin.projects.index
-- admin.projects.create
-- admin.projects.store-step-one
-- admin.projects.create.step-two
-- admin.projects.store-step-two
-- admin.projects.create.step-three
-- admin.projects.finalize
-- admin.projects.show
-- admin.projects.edit
-- admin.projects.update
-- admin.projects.destroy
-- admin.projects.quick-activate
-- admin.projects.update-status
-- admin.projects.archive
-- admin.projects.restore
-- admin.projects.duplicate
-- admin.projects.setup-status
-- admin.projects.available-users
-- admin.projects.add-member
-- admin.projects.remove-member
-- admin.projects.tasks.index
-- admin.projects.tasks.show
-- admin.projects.tasks.assign
-- admin.projects.tasks.unassign
-- admin.projects.tasks.bulk-assign
-
-## MIDDLEWARE
-- 'auth' - All routes require authentication
-- Individual permission checking is handled within controllers using helper methods:
-  - canEditProject()
-  - canDeleteProject()
-  - canManageTeam()
-  - canViewProject()
-
-## PROJECT CREATION FLOW
-1. GET  /admin/projects/create (Step 1: Basic Info Form)
-2. POST /admin/projects/store-step-one (Save & redirect to Step 2)
-3. GET  /admin/projects/{project}/step-two (Step 2: Dimensions Form)
-4. POST /admin/projects/{project}/store-step-two (Save & redirect to Step 3)
-5. GET  /admin/projects/{project}/step-three (Step 3: Review Form)
-6. POST /admin/projects/{project}/finalize (Activate & redirect to project)
-
-## PROJECT STATUS WORKFLOW
-- draft → active (via finalize or quick-activate)
-- active → paused/completed/archived (via update-status)
-- archived → active (via restore, requires dimensions)
-- Any status can go to archived (via archive)
-
-## SETUP VALIDATION
-- Projects without dimensions cannot be activated
-- All activation routes validate dimension existence
-- Setup status can be checked via setup-status API endpoint
-*/
