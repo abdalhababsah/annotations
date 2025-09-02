@@ -28,7 +28,8 @@ import {
     TrendingUp,
     FileAudio,
     Settings,
-    FolderOpen
+    FolderOpen,
+    CheckSquare
 } from 'lucide-vue-next';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
@@ -437,94 +438,94 @@ const continueDimensionSetup = () => {
 
                     <!-- Team + Batches (two-up) -->
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-    <!-- Team card -->
-    <Card>
-        <CardHeader>
-            <CardTitle class="flex items-center gap-2">
-                <Users class="h-5 w-5" />
-                Team
-                <Badge variant="secondary">{{ project.statistics?.team_size ?? 0 }}</Badge>
-            </CardTitle>
-        </CardHeader>
-        <CardContent class="space-y-2">
-            <p class="text-sm text-muted-foreground">
-                Manage assignments, and roles on the team members page.
-            </p>
-            <Link :href="route('admin.projects.members.index', project.id)">
-                <Button class="gap-2">
-                    <Users class="h-4 w-4" />
-                    Open Team Page
-                </Button>
-            </Link>
-        </CardContent>
-    </Card>
+                        <!-- Team card -->
+                        <Card>
+                            <CardHeader>
+                                <CardTitle class="flex items-center gap-2">
+                                    <Users class="h-5 w-5" />
+                                    Team
+                                    <Badge variant="secondary">{{ project.statistics?.team_size ?? 0 }}</Badge>
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent class="space-y-2">
+                                <p class="text-sm text-muted-foreground">
+                                    Manage assignments, and roles on the team members page.
+                                </p>
+                                <Link :href="route('admin.projects.members.index', project.id)">
+                                <Button class="gap-2">
+                                    <Users class="h-4 w-4" />
+                                    Open Team Page
+                                </Button>
+                                </Link>
+                            </CardContent>
+                        </Card>
 
-    <!-- Batches card -->
-    <Card>
-        <CardHeader>
-            <CardTitle class="flex items-center gap-2">
-                <FolderOpen class="h-5 w-5" />
-                Batches
-                <Badge variant="secondary">{{ project?.total_batches ?? 0 }}</Badge>
-            </CardTitle>
-        </CardHeader>
-        <CardContent class="space-y-2">
-            <p class="text-sm text-muted-foreground">
-                Create, publish, and monitor batches for this project.
-            </p>
-            <Link :href="route('admin.projects.batches.index', project.id)">
-                <Button class="gap-2">
-                    <FolderOpen class="h-4 w-4" />
-                    Open Batches
-                </Button>
-            </Link>
-        </CardContent>
-    </Card>
+                        <!-- Batches card -->
+                        <Card>
+                            <CardHeader>
+                                <CardTitle class="flex items-center gap-2">
+                                    <FolderOpen class="h-5 w-5" />
+                                    Batches
+                                    <Badge variant="secondary">{{ project?.total_batches ?? 0 }}</Badge>
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent class="space-y-2">
+                                <p class="text-sm text-muted-foreground">
+                                    Create, publish, and monitor batches for this project.
+                                </p>
+                                <Link :href="route('admin.projects.batches.index', project.id)">
+                                <Button class="gap-2">
+                                    <FolderOpen class="h-4 w-4" />
+                                    Open Batches
+                                </Button>
+                                </Link>
+                            </CardContent>
+                        </Card>
 
-    <!-- Audio Files card -->
-    <Card>
-        <CardHeader>
-            <CardTitle class="flex items-center gap-2">
-                <FileAudio class="h-5 w-5" />
-                Audio Files
-                <Badge variant="secondary">{{ project?.statistics?.total_media_files ?? 0 }}</Badge>
-            </CardTitle>
-        </CardHeader>
-        <CardContent class="space-y-2">
-            <p class="text-sm text-muted-foreground">
-                Upload, import, and manage audio files for this project.
-            </p>
-            <Link :href="route('admin.projects.audio-files.index', project.id)">
-                <Button class="gap-2">
-                    <FileAudio class="h-4 w-4" />
-                    Manage Audio Files
-                </Button>
-            </Link>
-        </CardContent>
-    </Card>
+                        <!-- Audio Files card -->
+                        <Card>
+                            <CardHeader>
+                                <CardTitle class="flex items-center gap-2">
+                                    <FileAudio class="h-5 w-5" />
+                                    Audio Files
+                                    <Badge variant="secondary">{{ project?.statistics?.total_media_files ?? 0 }}</Badge>
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent class="space-y-2">
+                                <p class="text-sm text-muted-foreground">
+                                    Upload, import, and manage audio files for this project.
+                                </p>
+                                <Link :href="route('admin.projects.audio-files.index', project.id)">
+                                <Button class="gap-2">
+                                    <FileAudio class="h-4 w-4" />
+                                    Manage Audio Files
+                                </Button>
+                                </Link>
+                            </CardContent>
+                        </Card>
 
-    <!-- 🔥 Tasks card -->
-    <Card>
-        <CardHeader>
-            <CardTitle class="flex items-center gap-2">
-                <CheckSquare class="h-5 w-5" />
-                Tasks
-                <Badge variant="secondary">{{ project?.statistics?.total_tasks ?? 0 }}</Badge>
-            </CardTitle>
-        </CardHeader>
-        <CardContent class="space-y-2">
-            <p class="text-sm text-muted-foreground">
-                View, filter, and export tasks with their annotations and review results.
-            </p>
-            <Link :href="route('admin.projects.tasks.manage', project.id)">
-                <Button class="gap-2">
-                    <CheckSquare class="h-4 w-4" />
-                    View Tasks
-                </Button>
-            </Link>
-        </CardContent>
-    </Card>
-</div>
+                        <!-- 🔥 Tasks card -->
+                        <Card>
+                            <CardHeader>
+                                <CardTitle class="flex items-center gap-2">
+                                    <CheckSquare class="h-5 w-5" />
+                                    Tasks
+                                    <Badge variant="secondary">{{ project?.statistics?.total_tasks ?? 0 }}</Badge>
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent class="space-y-2">
+                                <p class="text-sm text-muted-foreground">
+                                    View, filter, and export tasks with their annotations and review results.
+                                </p>
+                                <Link :href="route('admin.projects.tasks.manage', project.id)">
+                                <Button class="gap-2">
+                                    <CheckSquare class="h-4 w-4" />
+                                    View Tasks
+                                </Button>
+                                </Link>
+                            </CardContent>
+                        </Card>
+                    </div>
 
 
 
