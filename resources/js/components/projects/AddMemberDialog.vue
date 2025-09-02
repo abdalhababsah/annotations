@@ -15,8 +15,8 @@ const users = ref<Array<{ id:number; name:string; email:string; role:string }>>(
 const loading = ref(false)
 const errors  = ref<Record<string, string>>({})
 
-/** shadcn Select values are strings — keep as string, parse on submit */
-const userIdStr = ref<string>('')              // '' = not selected
+/** Select values are strings — keep as string, parse on submit */
+const userIdStr = ref<string>('')
 const role      = ref<Role>('annotator')
 
 /** Text buffer; '' => null on submit */
@@ -117,7 +117,7 @@ function submit() {
                 <SelectItem
                   v-for="u in users"
                   :key="u.id"
-                  :value="String(u.id)"  
+                  :value="String(u.id)"
                 >
                   <div class="flex items-center justify-between gap-2">
                     <span>{{ u.name }}</span>
@@ -156,7 +156,7 @@ function submit() {
             max="50"
             step="1"
             v-model="workloadText"
-            @update:modelValue="(v:any) => { workloadText = (v ?? '') + '' }" 
+            @update:modelValue="(v:any) => { workloadText = (v ?? '') + '' }"
             placeholder="Workload limit (optional)"
             @keydown.enter.prevent="submit"
           />

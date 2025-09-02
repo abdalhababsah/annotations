@@ -9,15 +9,19 @@ Route::get('/', function () {
 
 Route::get('dashboard', function () {
     $user = auth()->user();
-    
+
     if ($user->isSystemAdmin()) {
         return redirect()->route('admin.dashboard');
     }
-    
+
     if ($user->isProjectOwner()) {
         return redirect()->route('project_owner.dashboard');
     }
-    
+    if ($user->isStaff()) {
+//        dd('hello');
+        return redirect()->route('staff.dashboard');
+    }
+
     // Default user dashboard
     return Inertia::render('Dashboard');
 })->middleware(['auth', 'verified'])->name('dashboard');
@@ -25,4 +29,6 @@ Route::get('dashboard', function () {
 require __DIR__.'/settings.php';
 require __DIR__.'/auth.php';
 require __DIR__.'/admin.php';
+require __DIR__.'/staff.php';
+
 require __DIR__.'/project_owner.php';

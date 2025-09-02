@@ -4,7 +4,6 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { type BreadcrumbItemType } from '@/types';
@@ -16,30 +15,21 @@ import {
     Tag,
     File,
     Users,
-    BarChart3,
-    Edit,
     Archive,
     Trash,
     ListTodo,
-    Upload,
     Settings2,
     Clock,
     CheckCircle,
-    XCircle,
     AlertCircle,
     Play,
     Eye,
     Target,
     TrendingUp,
-    UserPlus,
-    Download,
-    Share,
-    MoreHorizontal,
+    FileAudio,
     Settings,
     FolderOpen
 } from 'lucide-vue-next';
-import AddMemberDialog from '@/components/projects/AddMemberDialog.vue';
-import EditMemberDialog from '@/components/projects/EditMemberDialog.vue';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 interface Member {
@@ -152,18 +142,8 @@ const breadcrumbs: BreadcrumbItemType[] = [
     { title: props.project.name, href: `/admin/projects/${props.project.id}` },
 ];
 
-// Local state management
-const showAddMemberDialog = ref(false);
-const showEditMemberDialog = ref(false);
-const selectedMember = ref<Member | null>(null);
 const showDeleteProjectDialog = ref(false);
-const showDeleteMemberDialog = ref(false);
-const memberToDelete = ref<number | null>(null);
-const localMembers = ref<Member[]>(props.project.members);
 const projectStatus = ref<string>(props.project.status);
-
-// Computed properties
-const displayMembers = computed(() => localMembers.value);
 
 const isDimensionsIncomplete = computed(() => {
     return props.project.status === 'draft' && props.dimensions.length === 0;
@@ -224,37 +204,6 @@ const formatDuration = (seconds: number) => {
     return `${minutes}m`;
 };
 
-// Event handlers
-const editMember = (member: Member) => {
-    selectedMember.value = member;
-    showEditMemberDialog.value = true;
-};
-
-const onMemberUpdated = (updatedMember: { id: number, role: string, workload_limit: number | null, is_active: boolean }) => {
-    const index = localMembers.value.findIndex(m => m.id === updatedMember.id);
-    if (index !== -1) {
-        localMembers.value[index] = {
-            ...localMembers.value[index],
-            role: updatedMember.role,
-            workload_limit: updatedMember.workload_limit,
-            is_active: updatedMember.is_active
-        };
-    }
-};
-
-const onMemberAdded = (newMember: Member) => {
-    if (newMember) {
-        localMembers.value.push(newMember);
-    }
-};
-
-const removeMember = (memberId: number) => {
-    const index = localMembers.value.findIndex(m => m.id === memberId);
-    if (index !== -1) {
-        localMembers.value.splice(index, 1);
-    }
-};
-
 const archiveProject = () => {
     router.patch(route('admin.projects.archive', props.project.id), {}, {
         preserveScroll: true,
@@ -281,28 +230,6 @@ const openDeleteProjectDialog = () => {
 
 const deleteProject = () => {
     router.delete(route('admin.projects.destroy', props.project.id));
-};
-
-const openDeleteMemberDialog = (memberId: number) => {
-    memberToDelete.value = memberId;
-    showDeleteMemberDialog.value = true;
-};
-
-const handleRemoveMember = () => {
-    if (memberToDelete.value === null) return;
-
-    const memberId = memberToDelete.value;
-    router.delete(route('admin.projects.remove-member', [props.project.id, memberId]), {
-        preserveScroll: true,
-        preserveState: true,
-        onSuccess: () => {
-            removeMember(memberId);
-            memberToDelete.value = null;
-        },
-        onError: () => {
-            memberToDelete.value = null;
-        }
-    });
 };
 
 const continueDimensionSetup = () => {
@@ -498,10 +425,7 @@ const continueDimensionSetup = () => {
                             <div class="w-full">
                                 <Link v-if="!isDimensionsIncomplete" :href="`/admin/projects/${project.id}/tasks`"
                                     class="w-full">
-                                <Button class="w-full gap-2">
-                                    <ListTodo class="h-4 w-4" />
-                                    Manage Tasks
-                                </Button>
+
                                 </Link>
                                 <Button v-else @click="continueDimensionSetup" class="w-full gap-2" variant="outline">
                                     <Settings class="h-4 w-4" />
@@ -512,7 +436,7 @@ const continueDimensionSetup = () => {
                     </Card>
 
                     <!-- Team + Batches (two-up) -->
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <!-- Team card -->
                         <Card>
                             <CardHeader>
@@ -556,7 +480,30 @@ const continueDimensionSetup = () => {
                                 </Link>
                             </CardContent>
                         </Card>
+
+                        <!-- Audio Files card -->
+                        <Card>
+                            <CardHeader>
+                                <CardTitle class="flex items-center gap-2">
+                                    <FileAudio class="h-5 w-5" />
+                                    Audio Files
+                                    <Badge variant="secondary">{{ project?.statistics?.total_media_files ?? 0 }}</Badge>
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent class="space-y-2">
+                                <p class="text-sm text-muted-foreground">
+                                    Upload, import, and manage audio files for this project.
+                                </p>
+                                <Link :href="route('admin.projects.audio-files.index', project.id)">
+                                <Button class="gap-2">
+                                    <FileAudio class="h-4 w-4" />
+                                    Manage Audio Files
+                                </Button>
+                                </Link>
+                            </CardContent>
+                        </Card>
                     </div>
+
 
                     <!-- Annotation Dimensions -->
                     <Card>
@@ -731,23 +678,10 @@ const continueDimensionSetup = () => {
             </div>
         </div>
 
-        <!-- Dialogs (outside container so they’re not affected by grid) -->
-        <AddMemberDialog v-if="!isDimensionsIncomplete" :project-id="project.id" :open="showAddMemberDialog"
-            @update:open="showAddMemberDialog = $event" @member-added="onMemberAdded" />
-
-        <EditMemberDialog v-if="!isDimensionsIncomplete" :project-id="project.id" :member="selectedMember"
-            :open="showEditMemberDialog" @update:open="showEditMemberDialog = $event"
-            @member-updated="onMemberUpdated" />
 
         <ConfirmDialog :open="showDeleteProjectDialog" @update:open="showDeleteProjectDialog = $event"
             title="Delete Project"
             description="Are you sure you want to delete this project? This action cannot be undone."
             confirm-text="Delete Project" cancel-text="Cancel" confirm-variant="destructive" @confirm="deleteProject" />
-
-        <ConfirmDialog :open="showDeleteMemberDialog"
-            @update:open="(val) => { showDeleteMemberDialog = val; if (!val) memberToDelete = null; }"
-            title="Remove Team Member" description="Are you sure you want to remove this team member from the project?"
-            confirm-text="Remove" cancel-text="Cancel" confirm-variant="destructive" @confirm="handleRemoveMember"
-            @cancel="memberToDelete = null" />
     </AppLayout>
 </template>

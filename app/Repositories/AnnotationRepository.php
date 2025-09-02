@@ -21,31 +21,31 @@ class AnnotationRepository extends BaseRepository implements AnnotationRepositor
     public function findByTask(Task $task): Collection
     {
         return $this->model->where('task_id', $task->id)
-                          ->with(['annotationValues.dimension', 'annotator'])
-                          ->get();
+            ->with(['annotationValues.dimension', 'annotator'])
+            ->get();
     }
 
     public function findByAnnotator(User $annotator): Collection
     {
         return $this->model->where('annotator_id', $annotator->id)
-                          ->with(['task.project', 'task.audioFile', 'annotationValues'])
-                          ->get();
+            ->with(['task.project', 'task.audioFile', 'annotationValues'])
+            ->get();
     }
 
     public function findPendingReview(): Collection
     {
         return $this->model->where('status', 'submitted')
-                          ->with(['task.project', 'annotator', 'annotationValues'])
-                          ->get();
+            ->with(['task.project', 'annotator', 'annotationValues'])
+            ->get();
     }
 
     public function findByProject(Project $project): Collection
     {
         return $this->model->whereHas('task', function($query) use ($project) {
-                            $query->where('project_id', $project->id);
-                        })
-                        ->with(['task.audioFile', 'annotator', 'annotationValues', 'reviews'])
-                        ->get();
+            $query->where('project_id', $project->id);
+        })
+            ->with(['task.audioFile', 'annotator', 'annotationValues', 'reviews'])
+            ->get();
     }
 
     public function createWithValues(Task $task, User $annotator, array $data): Annotation
@@ -108,14 +108,14 @@ class AnnotationRepository extends BaseRepository implements AnnotationRepositor
     public function getAnnotationProgress(Task $task): array
     {
         $annotation = $this->model->where('task_id', $task->id)->first();
-        
+
         if (!$annotation) {
             return ['status' => 'not_started', 'completion_percentage' => 0];
         }
 
         $totalDimensions = $task->project->annotationDimensions()->where('is_required', true)->count();
         $completedDimensions = $annotation->annotationValues()->count();
-        
+
         $completionPercentage = $totalDimensions > 0 ? ($completedDimensions / $totalDimensions) * 100 : 0;
 
         return [
@@ -148,22 +148,22 @@ class AnnotationRepository extends BaseRepository implements AnnotationRepositor
     public function getAnnotationsReadyForReview(Project $project): Collection
     {
         return $this->model->whereHas('task', function($query) use ($project) {
-                            $query->where('project_id', $project->id);
-                        })
-                        ->where('status', 'submitted')
-                        ->with(['task.audioFile', 'annotator', 'annotationValues.dimension'])
-                        ->get();
+            $query->where('project_id', $project->id);
+        })
+            ->where('status', 'submitted')
+            ->with(['task.audioFile', 'annotator', 'annotationValues.dimension'])
+            ->get();
     }
 
     public function getUserAnnotationHistory(User $user, Project $project): Collection
     {
         return $this->model->whereHas('task', function($query) use ($project) {
-                            $query->where('project_id', $project->id);
-                        })
-                        ->where('annotator_id', $user->id)
-                        ->with(['task.audioFile', 'annotationValues', 'reviews'])
-                        ->orderBy('created_at', 'desc')
-                        ->get();
+            $query->where('project_id', $project->id);
+        })
+            ->where('annotator_id', $user->id)
+            ->with(['task.audioFile', 'annotationValues', 'reviews'])
+            ->orderBy('created_at', 'desc')
+            ->get();
     }
 
     public function getProjectAnnotationSummary(Project $project): array

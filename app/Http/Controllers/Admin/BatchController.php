@@ -142,7 +142,7 @@ class BatchController extends Controller
                 ->with('success', 'Batch created successfully! You can now add tasks to it.');
 
         } catch (\Exception $e) {
-            return back()->withErrors(['error' => $e->getMessage()]);
+            return back()->with(['error' => $e->getMessage()]);
         }
     }
 
@@ -215,7 +215,7 @@ class BatchController extends Controller
 
         if (!$batch->isDraft()) {
             return redirect()->route('admin.projects.batches.show', [$project->id, $batch->id])
-                ->withErrors(['error' => 'Only draft batches can be edited.']);
+                ->with(['error' => 'Only draft batches can be edited.']);
         }
 
         return Inertia::render('Admin/Batches/Edit', [
@@ -245,7 +245,7 @@ class BatchController extends Controller
         $this->authorizeManage($project, $user);
 
         if (!$batch->isDraft()) {
-            return back()->withErrors(['error' => 'Only draft batches can be edited.']);
+            return back()->with(['error' => 'Only draft batches can be edited.']);
         }
 
         $validated = $request->validate([
@@ -260,7 +260,7 @@ class BatchController extends Controller
                 ->with('success', 'Batch updated successfully!');
 
         } catch (\Exception $e) {
-            return back()->withErrors(['error' => $e->getMessage()]);
+            return back()->with(['error' => $e->getMessage()]);
         }
     }
 
@@ -276,7 +276,7 @@ class BatchController extends Controller
         $this->authorizeManage($project, $user);
 
         if (!$batch->canBeDeleted()) {
-            return back()->withErrors(['error' => 'This batch cannot be deleted.']);
+            return back()->with(['error' => 'This batch cannot be deleted.']);
         }
 
         try {
@@ -286,7 +286,7 @@ class BatchController extends Controller
                 ->with('success', 'Batch deleted successfully!');
 
         } catch (\Exception $e) {
-            return back()->withErrors(['error' => $e->getMessage()]);
+            return back()->with(['error' => $e->getMessage()]);
         }
     }
 
@@ -307,7 +307,7 @@ class BatchController extends Controller
             return back()->with('success', 'Batch published successfully! Tasks are now available for annotation.');
 
         } catch (\Exception $e) {
-            return back()->withErrors(['error' => $e->getMessage()]);
+            return back()->with(['error' => $e->getMessage()]);
         }
     }
 
@@ -328,7 +328,7 @@ class BatchController extends Controller
             return back()->with('success', 'Batch paused successfully! No new tasks will be assigned.');
 
         } catch (\Exception $e) {
-            return back()->withErrors(['error' => $e->getMessage()]);
+            return back()->with(['error' => $e->getMessage()]);
         }
     }
 
@@ -349,7 +349,7 @@ class BatchController extends Controller
             return back()->with('success', 'Batch resumed successfully! Tasks are now available for annotation.');
 
         } catch (\Exception $e) {
-            return back()->withErrors(['error' => $e->getMessage()]);
+            return back()->with(['error' => $e->getMessage()]);
         }
     }
 
@@ -365,51 +365,91 @@ class BatchController extends Controller
         $this->authorizeManage($project, $user);
 
         if (!$batch->isDraft()) {
-            return back()->withErrors(['error' => 'Tasks can only be added to draft batches.']);
+            $message = 'Tasks can only be added to draft batches.';
+            return $request->wantsJson()
+                ? back()->with(['error' => $message])
+                : back()->with(['error' => $message]);
         }
 
-        $validated = $request->validate([
-            'audio_file_ids' => 'required|array|min:1',
-            'audio_file_ids.*' => 'exists:audio_files,id',
-        ]);
+        // ✅ Clear, strict validation
+        $validated = $request->validate(
+            [
+                'audio_file_ids'   => ['required', 'array', 'min:1'],
+                'audio_file_ids.*' => [
+                    'bail',
+                    'integer',
+                    'distinct',
+                    \Illuminate\Validation\Rule::exists('audio_files', 'id')->where(fn ($q) =>
+                    $q->where('project_id', $project->id)
+                    ),
+                ],
+            ],
+            [
+                'audio_file_ids.required'          => 'Please select at least one audio file.',
+                'audio_file_ids.array'             => 'The audio file payload must be an array of IDs.',
+                'audio_file_ids.min'               => 'Please select at least one audio file.',
+                'audio_file_ids.*.integer'         => 'Each audio file ID must be an integer.',
+                'audio_file_ids.*.distinct'        => 'You have duplicate audio file IDs in your selection.',
+                'audio_file_ids.*.exists'          => 'One or more audio files do not exist or do not belong to this project.',
+            ]
+        );
 
         try {
-            $addedCount = $this->batchService->addTasksToBatch($batch, $validated['audio_file_ids']);
+            // 🔍 Get a detailed result (added / skipped / invalid / duplicates)
+            $result = $this->batchService->addTasksToBatchDetailed($batch, $validated['audio_file_ids']);
 
-            return back()->with('success', "Successfully added {$addedCount} tasks to the batch!");
+            // Build user-friendly messages
+            $added     = $result['added'] ?? 0;
+            $skipped   = $result['skipped_already_in_batch'] ?? [];
+            $invalid   = $result['invalid_for_project'] ?? [];
+            $duplicates= $result['duplicates_in_request'] ?? [];
 
-        } catch (\Exception $e) {
-            return back()->withErrors(['error' => $e->getMessage()]);
+            if ($added === 0) {
+                // Nothing was added—return rich error context
+                $lines = [];
+                if (!empty($skipped))    $lines[] = count($skipped)." already in this batch: [".implode(', ', $skipped)."]";
+                if (!empty($invalid))    $lines[] = count($invalid)." not in project or invalid: [".implode(', ', $invalid)."]";
+                if (!empty($duplicates)) $lines[] = count($duplicates)." duplicate IDs in request: [".implode(', ', $duplicates)."]";
+
+                $detail = $lines ? ' ('.implode(' | ', $lines).')' : '';
+                return back()->with(['error' => 'No tasks were added'.$detail]);
+            }
+
+            // Success + optional info about skipped/invalid/duplicates
+            $successMsg = "Successfully added {$added} task".($added === 1 ? '' : 's')." to the batch!";
+            $infoParts  = [];
+            if (!empty($skipped))    $infoParts[] = count($skipped).' already existed';
+            if (!empty($invalid))    $infoParts[] = count($invalid).' invalid/not in project';
+            if (!empty($duplicates)) $infoParts[] = count($duplicates).' duplicates in request';
+
+            $info = $infoParts ? ' (skipped: '.implode(', ', $infoParts).')' : '';
+
+            return back()->with('success', $successMsg.$info);
+
+        } catch (\Throwable $e) {
+            // Surface the actual exception for easier debugging.
+            return back()->with(['error' => 'Failed to add tasks: '.$e->getMessage()]);
         }
     }
 
-    /**
-     * Remove task from batch
-     */
     public function removeTask(int $projectId, int $batchId, int $taskId): RedirectResponse
     {
         $project = $this->projectRepository->findOrFail($projectId);
         $batch = Batch::where('project_id', $project->id)->findOrFail($batchId);
         $task = $batch->tasks()->findOrFail($taskId);
         $user = auth()->user();
-
         $this->authorizeManage($project, $user);
-
         if (!$batch->isDraft()) {
-            return back()->withErrors(['error' => 'Tasks can only be removed from draft batches.']);
+            return back()->with(['error' => 'Tasks can only be removed from draft batches.']);
         }
-
-        if ($task->status !== 'draft') {
-            return back()->withErrors(['error' => 'Only draft tasks can be removed from batch.']);
+        if (!in_array($task->status, ['draft', 'pending'], true)) {
+            return back()->with(['error' => 'Only draft or pending tasks can be removed from batch.']);
         }
-
         try {
             $this->batchService->removeTaskFromBatch($batch, $task->id);
-
             return back()->with('success', 'Task removed from batch successfully!');
-
         } catch (\Exception $e) {
-            return back()->withErrors(['error' => $e->getMessage()]);
+            return back()->with(['error' => $e->getMessage()]);
         }
     }
 
@@ -444,7 +484,7 @@ class BatchController extends Controller
                 ->with('success', 'Batch duplicated successfully! You can now customize the copy.');
 
         } catch (\Exception $e) {
-            return back()->withErrors(['error' => $e->getMessage()]);
+            return back()->with(['error' => $e->getMessage()]);
         }
     }
 

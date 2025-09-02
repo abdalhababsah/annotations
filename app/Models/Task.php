@@ -22,7 +22,22 @@ class Task extends Model
         'completed_at',
         'expires_at',
     ];
-
+    //Schema::create('tasks', function (Blueprint $table) {
+    //    $table->id();
+    //    $table->foreignId('project_id')->constrained('projects')->onDelete('cascade');
+    //    $table->foreignId('audio_file_id')->constrained('audio_files')->onDelete('cascade');
+    //    $table->foreignId('assigned_to')->nullable()->constrained('users');
+    //    $table->enum('status', ['pending', 'assigned', 'in_progress', 'completed', 'under_review', 'approved', 'rejected'])->default('pending');
+    //    $table->timestamp('assigned_at')->nullable();
+    //    $table->timestamp('started_at')->nullable();
+    //    $table->timestamp('completed_at')->nullable();
+    //    $table->timestamp('expires_at')->nullable()->comment('Task expiration time');
+    //    $table->timestamps();
+    //
+    //    $table->index(['project_id', 'status']);
+    //    $table->index(['assigned_to', 'status']);
+    //    $table->index('expires_at');
+    //});
     protected $casts = [
         'assigned_at' => 'datetime',
         'started_at' => 'datetime',
@@ -115,7 +130,7 @@ class Task extends Model
         if (!$this->expires_at || $this->isExpired()) {
             return 0;
         }
-        
+
         return $this->expires_at->diffInMinutes(now());
     }
 
@@ -126,7 +141,8 @@ class Task extends Model
 
     public function canBeAssigned()
     {
-        return $this->status === 'pending' && $this->batch && $this->batch->isInProgress();
+            return $this->status === 'pending' && !$this->isExpired() && $this->batch && ($this->batch->isInProgress() || $this->batch->isPublished());
+
     }
 
     // Skip logic - creates skip record and resets task
@@ -134,7 +150,7 @@ class Task extends Model
     {
         // Create skip activity record with task_id
         SkipActivity::skipTask($this, $user, $reason, $description);
-        
+
         // Reset task to pending
         $this->update([
             'status' => 'pending',
@@ -155,7 +171,7 @@ class Task extends Model
     public static function getAvailableTasksForUser($userId, $projectId)
     {
         $skippedTaskIds = SkipActivity::getSkippedTasksForUser($userId, $projectId);
-        
+
         return static::where('project_id', $projectId)
                     ->where('status', 'pending')
                     ->whereHas('batch', function ($query) {

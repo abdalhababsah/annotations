@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\AudioFileController;
 use App\Http\Controllers\Admin\BatchController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\ProjectController;
@@ -13,7 +14,7 @@ Route::middleware(['auth', 'role:SystemAdmin'])->group(function () {
 });
 
 // Project Routes - Accessible by System Admins and Project Owners
-Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function () {
+Route::middleware(['auth','role:SystemAdmin'])->prefix('admin')->name('admin.')->group(function () {
 
     // =====================================================
     // PROJECT ROUTES
@@ -69,6 +70,18 @@ Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function () 
 
         Route::delete('{project}/members/{member}', [ProjectMembersController::class, 'destroy'])
             ->name('members.destroy');
+
+
+        // ===== AUDIO FILES (per project) =====
+        Route::prefix('{project}/audio-files')->name('audio-files.')->group(function () {
+            Route::get('/', [AudioFileController::class, 'index'])->name('index');
+            Route::get('/create', [AudioFileController::class, 'create'])->name('create');
+            Route::post('/', [AudioFileController::class, 'store'])->name('store');
+            Route::post('/import', [AudioFileController::class, 'import'])->name('import');
+            Route::patch('/{audioFile}', [AudioFileController::class, 'update'])->name('update');
+            Route::delete('/{audioFile}', [AudioFileController::class, 'destroy'])->name('destroy');
+            Route::delete('/', [AudioFileController::class, 'bulkDestroy'])->name('bulk-destroy');
+        });
 
         // ===== PROJECT TASK ROUTES =====
         Route::prefix('{project}/tasks')->name('tasks.')->group(function () {

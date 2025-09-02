@@ -56,8 +56,8 @@ class BatchRepository extends BaseRepository implements BatchRepositoryInterface
         // Apply sorting
         $sortField = $filters['sort'] ?? 'created_at';
         $sortDirection = $filters['direction'] ?? 'desc';
-        
-        $allowedSorts = ['created_at', 'updated_at', 'name', 'status', 'completion_percentage'];
+
+        $allowedSorts = ['created_at', 'updated_at', 'name', 'status'];
         if (in_array($sortField, $allowedSorts)) {
             $query->orderBy($sortField, $sortDirection);
         }
@@ -84,7 +84,7 @@ class BatchRepository extends BaseRepository implements BatchRepositoryInterface
                     $batch->tasks()->create([
                         'project_id' => $project->id,
                         'audio_file_id' => $audioFile->id,
-                        'status' => 'draft',
+                        'status' => 'pending',
                     ]);
                 }
             }
@@ -104,9 +104,6 @@ class BatchRepository extends BaseRepository implements BatchRepositoryInterface
                 'status' => 'published',
                 'published_at' => now(),
             ]);
-
-            // Update all tasks to pending status
-            $batch->tasks()->where('status', 'draft')->update(['status' => 'pending']);
 
             return $batch->fresh(['tasks']);
         });
@@ -133,7 +130,7 @@ class BatchRepository extends BaseRepository implements BatchRepositoryInterface
         }
 
         $newStatus = $batch->total_tasks === $batch->completed_tasks ? 'completed' : 'published';
-        
+
         $batch->update([
             'status' => $newStatus,
             'paused_at' => null,
@@ -202,8 +199,8 @@ class BatchRepository extends BaseRepository implements BatchRepositoryInterface
             ')
             ->first();
 
-        $completionPercentage = $taskStats->total > 0 
-            ? round(($taskStats->completed / $taskStats->total) * 100, 2) 
+        $completionPercentage = $taskStats->total > 0
+            ? round(($taskStats->completed / $taskStats->total) * 100, 2)
             : 0;
 
         $batch->update([
@@ -259,7 +256,7 @@ class BatchRepository extends BaseRepository implements BatchRepositoryInterface
         return \DB::transaction(function () use ($batch) {
             // Delete all tasks
             $batch->tasks()->delete();
-            
+
             // Delete batch
             return $batch->delete();
         });

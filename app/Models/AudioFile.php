@@ -1,10 +1,10 @@
 <?php
-// AudioFile.php
 
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Storage;
 
 class AudioFile extends Model
 {
@@ -27,43 +27,29 @@ class AudioFile extends Model
         'duration' => 'decimal:2',
     ];
 
+    protected $appends = ['url'];
+
     // Relationships
-    public function project()
+    public function project() { return $this->belongsTo(Project::class); }
+    public function uploader() { return $this->belongsTo(User::class, 'uploaded_by'); }
+    public function tasks() { return $this->hasMany(Task::class); }
+
+    // Accessors
+    public function getUrlAttribute(): string
     {
-        return $this->belongsTo(Project::class);
+        return Storage::disk('s3')->url($this->file_path);
     }
 
-    public function uploader()
+    public function scopeSearch($q, ?string $term)
     {
-        return $this->belongsTo(User::class, 'uploaded_by');
+        if (!$term) return $q;
+        $like = "%{$term}%";
+        return $q->where(function ($qq) use ($like) {
+            $qq->where('original_filename', 'like', $like)
+               ->orWhere('stored_filename', 'like', $like)
+               ->orWhere('mime_type', 'like', $like);
+        });
     }
 
-    public function tasks()
-    {
-        return $this->hasMany(Task::class);
-    }
-
-    // Helper methods
-    public function getFormattedDurationAttribute()
-    {
-        if (!$this->duration) return '00:00';
-        
-        $minutes = floor($this->duration / 60);
-        $seconds = $this->duration % 60;
-        return sprintf('%02d:%02d', $minutes, $seconds);
-    }
-
-    public function getFormattedFileSizeAttribute()
-    {
-        if (!$this->file_size) return '0 B';
-        
-        $units = ['B', 'KB', 'MB', 'GB'];
-        $bytes = $this->file_size;
-        
-        for ($i = 0; $bytes >= 1024 && $i < count($units) - 1; $i++) {
-            $bytes /= 1024;
-        }
-        
-        return round($bytes, 2) . ' ' . $units[$i];
-    }
+    public function scopeForProject($q, int $projectId) { return $q->where('project_id', $projectId); }
 }

@@ -330,9 +330,6 @@ const continueSetup = (project: Project) => {
                 <SelectContent>
                   <SelectItem value="created_at">Created Date</SelectItem>
                   <SelectItem value="name">Name</SelectItem>
-                  <SelectItem value="completion_percentage">Progress</SelectItem>
-                  <SelectItem value="team_size">Team Size</SelectItem>
-                  <SelectItem value="tasks_count">Tasks</SelectItem>
                 </SelectContent>
               </Select>
 

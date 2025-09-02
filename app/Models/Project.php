@@ -54,6 +54,7 @@ class Project extends Model
         return $this->hasMany(AnnotationDimension::class)->orderBy('display_order');
     }
 
+
     public function audioFiles()
     {
         return $this->hasMany(AudioFile::class);
@@ -231,6 +232,10 @@ class Project extends Model
         ];
     }
 
+    public function projectMemberships(){
+        return $this->hasMany(ProjectMember::class);
+
+    }
     // Get available batches for work
     public function getAvailableBatches()
     {

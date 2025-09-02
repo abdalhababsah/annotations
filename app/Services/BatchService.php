@@ -1,5 +1,4 @@
 <?php
-// BatchService.php
 
 namespace App\Services;
 
@@ -22,9 +21,6 @@ class BatchService
      */
     public function createBatch(Project $project, array $data, User $creator): Batch
     {
-
-
-        // Create batch
         $batch = $this->batchRepository->create([
             'project_id' => $project->id,
             'name' => $data['name'],
@@ -45,9 +41,7 @@ class BatchService
             throw new \Exception('At least one audio file must be selected to create tasks.');
         }
 
-        // Validate audio files belong to project
         $validAudioFiles = $project->audioFiles()->whereIn('id', $audioFileIds)->pluck('id')->toArray();
-        
         if (empty($validAudioFiles)) {
             throw new \Exception('No valid audio files found for this project.');
         }
@@ -56,37 +50,79 @@ class BatchService
     }
 
     /**
-     * Add tasks to existing batch
+     * (Legacy) Add tasks – returns count only. Kept for backward compatibility.
      */
     public function addTasksToBatch(Batch $batch, array $audioFileIds): int
+    {
+        $result = $this->addTasksToBatchDetailed($batch, $audioFileIds);
+        return $result['added'] ?? 0;
+    }
+
+    /**
+     * NEW: Add tasks with detailed outcome (added/duplicates/invalid/already-in-batch).
+     */
+    public function addTasksToBatchDetailed(Batch $batch, array $audioFileIds): array
     {
         if (!$batch->isDraft()) {
             throw new \Exception('Tasks can only be added to draft batches.');
         }
-
         if (empty($audioFileIds)) {
             throw new \Exception('No audio files selected.');
         }
 
+        // Normalize & find duplicates in request
+        $audioFileIds = array_values(array_map('intval', $audioFileIds));
+        $seen = [];
+        $duplicatesInRequest = [];
+        foreach ($audioFileIds as $id) {
+            if (isset($seen[$id])) $duplicatesInRequest[] = $id;
+            $seen[$id] = true;
+        }
+        $uniqueIds = array_values(array_unique($audioFileIds));
+
+        // Valid IDs that belong to the same project
+        $validIds = $batch->project->audioFiles()
+            ->whereIn('id', $uniqueIds)
+            ->pluck('id')
+            ->toArray();
+
+        // Invalid for this project (or non-existent)
+        $invalidForProject = array_values(array_diff($uniqueIds, $validIds));
+
+        // Already present in this batch
+        $alreadyInBatch = $batch->tasks()
+            ->whereIn('audio_file_id', $validIds)
+            ->pluck('audio_file_id')
+            ->toArray();
+
+        // Insert = valid - already in batch
+        $toInsert = array_values(array_diff($validIds, $alreadyInBatch));
+
+        $createdTaskIds = [];
         $addedCount = 0;
 
-        DB::transaction(function () use ($batch, $audioFileIds, &$addedCount) {
-            foreach ($audioFileIds as $audioFileId) {
-                $audioFile = $batch->project->audioFiles()->find($audioFileId);
-                
-                // Check if task already exists for this audio file in this batch
-                if ($audioFile && !$batch->tasks()->where('audio_file_id', $audioFileId)->exists()) {
-                    $batch->tasks()->create([
-                        'project_id' => $batch->project_id,
-                        'audio_file_id' => $audioFileId,
-                        'status' => 'draft',
-                    ]);
-                    $addedCount++;
-                }
+        DB::transaction(function () use ($batch, $toInsert, &$createdTaskIds, &$addedCount) {
+            foreach ($toInsert as $audioId) {
+                $task = $batch->tasks()->create([
+                    'project_id'    => $batch->project_id,
+                    'audio_file_id' => $audioId,
+                    'status'        => 'pending',
+                ]);
+                $createdTaskIds[] = $task->id;
+                $addedCount++;
             }
         });
 
-        return $addedCount;
+        // update batch cached stats
+        $this->updateBatchStatistics($batch);
+
+        return [
+            'added'                    => $addedCount,
+            'created_task_ids'         => $createdTaskIds,
+            'skipped_already_in_batch' => $alreadyInBatch,
+            'invalid_for_project'      => $invalidForProject,
+            'duplicates_in_request'    => $duplicatesInRequest,
+        ];
     }
 
     /**
@@ -99,16 +135,21 @@ class BatchService
         }
 
         $task = $batch->tasks()->find($taskId);
-        
         if (!$task) {
             throw new \Exception('Task not found in this batch.');
         }
 
-        if ($task->status !== 'draft') {
-            throw new \Exception('Only draft tasks can be removed from batch.');
+        // Allow removing both fresh draft tasks and pending tasks
+        if (!in_array($task->status, ['draft', 'pending'], true)) {
+            throw new \Exception('Only draft or pending tasks can be removed from the batch.');
         }
 
-        return $task->delete();
+        $deleted = (bool) $task->delete();
+
+        // update batch cached stats
+        $this->updateBatchStatistics($batch);
+
+        return $deleted;
     }
 
     /**
@@ -121,22 +162,15 @@ class BatchService
         }
 
         return DB::transaction(function () use ($batch) {
-            // Update batch status
             $batch->update([
                 'status' => 'published',
                 'published_at' => now(),
             ]);
 
-            // Update all draft tasks to pending
-            $batch->tasks()->where('status', 'draft')->update(['status' => 'pending']);
-
             return $batch->fresh(['tasks']);
         });
     }
 
-    /**
-     * Pause batch to stop new task assignments
-     */
     public function pauseBatch(Batch $batch): Batch
     {
         if (!$batch->canBePaused()) {
@@ -151,18 +185,14 @@ class BatchService
         return $batch;
     }
 
-    /**
-     * Resume paused batch
-     */
     public function resumeBatch(Batch $batch): Batch
     {
         if (!$batch->canBeResumed()) {
             throw new \Exception('Batch cannot be resumed.');
         }
 
-        // Determine new status based on completion
-        $newStatus = $batch->total_tasks > 0 && $batch->completed_tasks >= $batch->total_tasks 
-            ? 'completed' 
+        $newStatus = $batch->total_tasks > 0 && $batch->completed_tasks >= $batch->total_tasks
+            ? 'completed'
             : ($batch->total_tasks > 0 ? 'published' : 'draft');
 
         $batch->update([
@@ -173,9 +203,6 @@ class BatchService
         return $batch;
     }
 
-    /**
-     * Update batch information
-     */
     public function updateBatch(Batch $batch, array $data): Batch
     {
         if (!$batch->isDraft()) {
@@ -190,9 +217,6 @@ class BatchService
         return $batch;
     }
 
-    /**
-     * Delete batch and all its tasks
-     */
     public function deleteBatch(Batch $batch): bool
     {
         if (!$batch->canBeDeleted()) {
@@ -202,19 +226,12 @@ class BatchService
         return $this->batchRepository->deleteBatchWithTasks($batch);
     }
 
-    /**
-     * Duplicate batch with all its tasks
-     */
     public function duplicateBatch(Batch $batch, User $creator, string $newName = null): Batch
     {
         $newName = $newName ?? $batch->name . ' (Copy)';
-        
         return $this->batchRepository->duplicateBatch($batch, $creator, $newName);
     }
 
-    /**
-     * Get batch progress and statistics
-     */
     public function getBatchProgress(Batch $batch): array
     {
         $taskStats = $batch->tasks()
@@ -242,8 +259,8 @@ class BatchService
             'under_review_tasks' => $taskStats->under_review,
             'approved_tasks' => $taskStats->approved,
             'rejected_tasks' => $taskStats->rejected,
-            'completion_percentage' => $taskStats->total > 0 
-                ? round((($taskStats->approved + $taskStats->rejected) / $taskStats->total) * 100, 2) 
+            'completion_percentage' => $taskStats->total > 0
+                ? round((($taskStats->approved + $taskStats->rejected) / $taskStats->total) * 100, 2)
                 : 0,
             'published_at' => $batch->published_at?->format('Y-m-d H:i'),
             'completed_at' => $batch->completed_at?->format('Y-m-d H:i'),
@@ -254,9 +271,6 @@ class BatchService
         ];
     }
 
-    /**
-     * Get available audio files for batch (not already in tasks)
-     */
     public function getAvailableAudioFiles(Batch $batch): \Illuminate\Database\Eloquent\Collection
     {
         return $batch->project->audioFiles()
@@ -267,41 +281,26 @@ class BatchService
             ->get();
     }
 
-    /**
-     * Get project batch statistics
-     */
     public function getProjectBatchStatistics(Project $project): array
     {
         return $this->batchRepository->getProjectBatchStatistics($project);
     }
 
-    /**
-     * Get batches ready for work assignment
-     */
     public function getBatchesReadyForWork(): \Illuminate\Database\Eloquent\Collection
     {
         return $this->batchRepository->getBatchesReadyForWork();
     }
 
-    /**
-     * Get available batches for a user
-     */
     public function getUserAvailableBatches(User $user): \Illuminate\Database\Eloquent\Collection
     {
         return $this->batchRepository->getUserAvailableBatches($user);
     }
 
-    /**
-     * Auto-update batch statistics (called by task model events)
-     */
     public function updateBatchStatistics(Batch $batch): Batch
     {
         return $this->batchRepository->updateBatchStatistics($batch);
     }
 
-    /**
-     * Get next available task from batch for user
-     */
     public function getNextTaskFromBatch(Batch $batch, int $userId): ?\App\Models\Task
     {
         if (!in_array($batch->status, ['published', 'in_progress'])) {
@@ -311,18 +310,12 @@ class BatchService
         return $batch->getAvailableTasksForUser($userId)->first();
     }
 
-    /**
-     * Check if batch can accept new task assignments
-     */
     public function canAssignTasks(Batch $batch): bool
     {
-        return in_array($batch->status, ['published', 'in_progress']) && 
-               $batch->total_tasks > $batch->completed_tasks;
+        return in_array($batch->status, ['published', 'in_progress']) &&
+            $batch->total_tasks > $batch->completed_tasks;
     }
 
-    /**
-     * Transform batch for API/frontend response
-     */
     public function transformBatchForResponse(Batch $batch): array
     {
         return [
