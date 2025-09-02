@@ -70,7 +70,13 @@ class Task extends Model
     {
         return $this->hasMany(Annotation::class);
     }
-
+    public function approvedAnnotation()
+    {
+        return $this->hasOne(Annotation::class)
+                    ->where('status', 'approved')
+                    ->latestOfMany();
+    }
+    
     public function latestAnnotation()
     {
         return $this->hasOne(Annotation::class)->latest();

@@ -7,6 +7,10 @@ use App\Http\Controllers\Admin\ProjectController;
 use App\Http\Controllers\Admin\ProjectMembersController;
 use App\Http\Controllers\Admin\TaskController;
 use Illuminate\Support\Facades\Route;
+// routes/web.php
+use App\Http\Controllers\Admin\ProjectTasksController;
+
+
 
 // Admin Routes - System Admin Only
 Route::middleware(['auth', 'role:SystemAdmin'])->group(function () {
@@ -21,6 +25,7 @@ Route::middleware(['auth','role:SystemAdmin'])->prefix('admin')->name('admin.')-
     // =====================================================
     Route::prefix('projects')->name('projects.')->group(function () {
 
+        
         // ===== MAIN PROJECT CRUD ROUTES =====
         Route::get('/', [ProjectController::class, 'index'])->name('index');
         Route::get('/create', [ProjectController::class, 'create'])->name('create');
@@ -85,11 +90,19 @@ Route::middleware(['auth','role:SystemAdmin'])->prefix('admin')->name('admin.')-
 
         // ===== PROJECT TASK ROUTES =====
         Route::prefix('{project}/tasks')->name('tasks.')->group(function () {
+            Route::get('/manage', [ProjectTasksController::class, 'index'])->name('manage');
+            Route::get('/export', [ProjectTasksController::class, 'export'])->name('export');
+        
+
+
             Route::get('/', [TaskController::class, 'index'])->name('index');
             Route::get('/{task}', [TaskController::class, 'show'])->name('show');
             Route::patch('/{task}/assign', [TaskController::class, 'assign'])->name('assign');
             Route::patch('/{task}/unassign', [TaskController::class, 'unassign'])->name('unassign');
             Route::post('/bulk-assign', [TaskController::class, 'bulkAssign'])->name('bulk-assign');
+
+
+   
         });
 
         // Add this inside the projects prefix group, after the task routes
