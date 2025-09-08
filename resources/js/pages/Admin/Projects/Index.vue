@@ -38,7 +38,9 @@ import {
   AlertCircle,
   CheckCircle2,
   Play,
-  Wrench
+  Wrench,
+  Tags,
+  Layers
 } from 'lucide-vue-next'
 
 /* ===================== Types ===================== */
@@ -52,19 +54,20 @@ interface Project {
   name: string
   description: string | null
   status: 'draft' | 'active' | 'paused' | 'completed' | 'archived'
-  project_type: 'audio'
+  project_type: 'annotation' | 'segmentation'
+  allow_custom_labels?: boolean
   completion_percentage: number
   team_size: number
   task_time_minutes: number
   review_time_minutes: number
   audio_files_count: number
   tasks_count: number
-  dimensions_count: number
+  configuration_count: number
   owner: Owner
   deadline: string | null
   created_at: string
   updated_at: string
-  has_dimensions: boolean
+  has_configuration: boolean
   is_setup_incomplete: boolean
   can_be_activated: boolean
   setup_step: number
@@ -104,7 +107,6 @@ interface Props {
 /* ===================== Props / Page ===================== */
 const props = defineProps<Props>()
 
-
 /* ===================== UI State (server-driven) ===================== */
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'Projects', href: '/admin/projects' }]
 
@@ -128,6 +130,7 @@ const getStatusVariant = (status: string) => {
     default: return 'secondary'
   }
 }
+
 const getStatusIcon = (status: string) => {
   switch (status) {
     case 'active': return Activity
@@ -138,8 +141,29 @@ const getStatusIcon = (status: string) => {
     default: return Settings
   }
 }
-const getSetupStepText = (step: number) =>
-  step === 2 ? 'Configure Dimensions' : step === 3 ? 'Ready to Activate' : 'Setup Complete'
+
+const getProjectTypeIcon = (projectType: string) => {
+  switch (projectType) {
+    case 'annotation': return Tags
+    case 'segmentation': return Layers
+    default: return FileAudio
+  }
+}
+
+const getProjectTypeTitle = (projectType: string) => {
+  switch (projectType) {
+    case 'annotation': return 'Audio Annotation'
+    case 'segmentation': return 'Audio Segmentation'
+    default: return 'Audio Project'
+  }
+}
+
+const getSetupStepText = (step: number, projectType: string) => {
+  if (step === 2) {
+    return projectType === 'annotation' ? 'Configure Dimensions' : 'Configure Labels'
+  }
+  return step === 3 ? 'Ready to Activate' : 'Setup Complete'
+}
 
 const getSetupStepIcon = (step: number) => (step === 2 ? Settings : step === 3 ? Play : CheckCircle2)
 const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString()
@@ -198,7 +222,7 @@ const continueSetup = (project: Project) => {
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 class="text-3xl font-bold tracking-tight">Projects</h1>
-          <p class="text-muted-foreground">Manage and monitor your audio annotation projects</p>
+          <p class="text-muted-foreground">Manage and monitor your audio annotation and segmentation projects</p>
         </div>
         <Link v-if="canCreateProject" :href="route('admin.projects.create')">
           <Button size="lg" class="gap-2">
@@ -213,7 +237,7 @@ const continueSetup = (project: Project) => {
         <AlertCircle class="h-4 w-4 text-amber-600" />
         <AlertDescription class="text-amber-800">
           <strong>{{ statistics.incomplete_projects }} project{{ statistics.incomplete_projects > 1 ? 's' : '' }}</strong>
-          need{{ statistics.incomplete_projects === 1 ? 's' : '' }} setup completion. Projects without dimensions cannot be activated.
+          need{{ statistics.incomplete_projects === 1 ? 's' : '' }} setup completion. Projects without proper configuration cannot be activated.
         </AlertDescription>
       </Alert>
 
@@ -307,7 +331,7 @@ const continueSetup = (project: Project) => {
               />
             </div>
 
-            <!-- Right controls (no per-page dropdown) -->
+            <!-- Right controls -->
             <div class="flex flex-col sm:flex-row gap-4 w-full lg:w-auto lg:ml-auto">
               <Select v-model="statusFilter" class="flex-1 min-w-[150px]">
                 <SelectTrigger>
@@ -377,7 +401,7 @@ const continueSetup = (project: Project) => {
               <div class="flex-1 min-w-0">
                 <CardTitle class="text-lg truncate flex items-center gap-2">
                   {{ project.name }}
-                  <AlertCircle v-if="!project.has_dimensions" class="h-4 w-4 text-amber-500 flex-shrink-0" />
+                  <AlertCircle v-if="!project.has_configuration" class="h-4 w-4 text-amber-500 flex-shrink-0" />
                 </CardTitle>
                 <p class="text-sm text-muted-foreground mt-1 line-clamp-2">
                   {{ project.description || 'No description provided' }}
@@ -385,6 +409,10 @@ const continueSetup = (project: Project) => {
               </div>
               <div class="flex flex-col items-end gap-2">
                 <Badge :variant="getStatusVariant(project.status)">{{ project.status }}</Badge>
+                <Badge variant="secondary" class="gap-1">
+                  <component :is="getProjectTypeIcon(project.project_type)" class="h-3 w-3" />
+                  {{ project.project_type }}
+                </Badge>
                 <Badge
                   v-if="project.is_setup_incomplete"
                   variant="outline"
@@ -401,10 +429,10 @@ const continueSetup = (project: Project) => {
               <Alert v-if="project.is_setup_incomplete" class="border-amber-200 bg-amber-50">
                 <component :is="getSetupStepIcon(project.setup_step)" class="h-4 w-4 text-amber-600" />
                 <AlertDescription class="text-amber-800 text-sm">
-                  <strong>{{ getSetupStepText(project.setup_step) }}</strong>
+                  <strong>{{ getSetupStepText(project.setup_step, project.project_type) }}</strong>
                   <br v-if="project.setup_step === 2" />
                   <span v-if="project.setup_step === 2" class="text-xs">
-                    Configure annotation dimensions to activate this project
+                    Configure {{ project.project_type === 'annotation' ? 'annotation dimensions' : 'segmentation labels' }} to activate this project
                   </span>
                   <span v-else-if="project.setup_step === 3" class="text-xs">
                     Review your configuration and activate the project
@@ -434,9 +462,11 @@ const continueSetup = (project: Project) => {
                   <span>{{ project.audio_files_count }} files</span>
                 </div>
                 <div class="flex items-center gap-2">
-                  <Settings class="h-4 w-4" :class="project.has_dimensions ? 'text-green-600' : 'text-red-500'" />
-                  <span :class="project.has_dimensions ? 'text-green-600' : 'text-red-500'">
-                    {{ project.dimensions_count }} dims
+                  <component :is="getProjectTypeIcon(project.project_type)" 
+                    class="h-4 w-4" 
+                    :class="project.has_configuration ? 'text-green-600' : 'text-red-500'" />
+                  <span :class="project.has_configuration ? 'text-green-600' : 'text-red-500'">
+                    {{ project.configuration_count }} {{ project.project_type === 'annotation' ? 'dims' : 'labels' }}
                   </span>
                 </div>
               </div>
@@ -451,6 +481,10 @@ const continueSetup = (project: Project) => {
                   <Clock class="h-3 w-3" />
                   Due {{ formatDate(project.deadline) }}
                 </div>
+                <div v-if="project.allow_custom_labels" class="flex items-center gap-1">
+                  <Tags class="h-3 w-3" />
+                  Custom labels enabled
+                </div>
               </div>
             </div>
           </CardContent>
@@ -459,7 +493,7 @@ const continueSetup = (project: Project) => {
             <template v-if="project.is_setup_incomplete">
               <Button @click="continueSetup(project)" class="flex-1" variant="default">
                 <component :is="getSetupStepIcon(project.setup_step)" class="mr-2 h-4 w-4" />
-                {{ getSetupStepText(project.setup_step) }}
+                {{ getSetupStepText(project.setup_step, project.project_type) }}
               </Button>
             </template>
             <template v-else-if="project.can_be_activated">
@@ -483,6 +517,7 @@ const continueSetup = (project: Project) => {
           <TableHeader>
             <TableRow>
               <TableHead class="w-[320px]">Project</TableHead>
+              <TableHead>Type</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Setup</TableHead>
               <TableHead>Progress</TableHead>
@@ -503,7 +538,7 @@ const continueSetup = (project: Project) => {
                   <div class="space-y-1">
                     <div class="font-medium flex items-center gap-2">
                       {{ project.name }}
-                      <AlertCircle v-if="!project.has_dimensions" class="h-4 w-4 text-amber-500" />
+                      <AlertCircle v-if="!project.has_configuration" class="h-4 w-4 text-amber-500" />
                     </div>
                     <div class="text-sm text-muted-foreground line-clamp-2">
                       {{ project.description || 'No description provided' }}
@@ -519,15 +554,27 @@ const continueSetup = (project: Project) => {
                 </div>
               </TableCell>
 
+              <TableCell>
+                <Badge variant="secondary" class="gap-1">
+                  <component :is="getProjectTypeIcon(project.project_type)" class="h-3 w-3" />
+                  {{ project.project_type }}
+                </Badge>
+                <div v-if="project.allow_custom_labels" class="text-xs text-muted-foreground mt-1">
+                  Custom labels
+                </div>
+              </TableCell>
+
               <TableCell class="capitalize">
                 <Badge :variant="getStatusVariant(project.status)">{{ project.status }}</Badge>
               </TableCell>
 
               <TableCell>
                 <div class="flex items-center gap-2 text-sm">
-                  <Settings class="h-4 w-4" :class="project.has_dimensions ? 'text-green-600' : 'text-red-500'" />
-                  <span :class="project.has_dimensions ? 'text-green-600' : 'text-red-500'">
-                    {{ project.dimensions_count }} dims
+                  <component :is="getProjectTypeIcon(project.project_type)" 
+                    class="h-4 w-4" 
+                    :class="project.has_configuration ? 'text-green-600' : 'text-red-500'" />
+                  <span :class="project.has_configuration ? 'text-green-600' : 'text-red-500'">
+                    {{ project.configuration_count }} {{ project.project_type === 'annotation' ? 'dims' : 'labels' }}
                   </span>
                   <Badge v-if="project.is_setup_incomplete" variant="outline" class="ml-2">Needs Setup</Badge>
                 </div>
@@ -569,7 +616,7 @@ const continueSetup = (project: Project) => {
                 <template v-if="project.is_setup_incomplete">
                   <Button size="sm" @click="continueSetup(project)">
                     <component :is="getSetupStepIcon(project.setup_step)" class="mr-2 h-4 w-4" />
-                    {{ getSetupStepText(project.setup_step) }}
+                    {{ getSetupStepText(project.setup_step, project.project_type) }}
                   </Button>
                 </template>
                 <template v-else-if="project.can_be_activated">
@@ -603,7 +650,6 @@ const continueSetup = (project: Project) => {
           :total="pg.total || 0"
           @update:page="(p:number) => reload(p)"
         >
-          <!-- Using the Reka slot from our Shadcn wrapper -->
           <PaginationContent v-slot="{ items }">
             <PaginationFirst @click="reload(1)" />
             <PaginationPrevious @click="reload(Math.max(1, (pg.current_page || 1) - 1))" />
@@ -637,7 +683,7 @@ const continueSetup = (project: Project) => {
             <p class="text-muted-foreground mb-6">
               {{
                 pg.total === 0
-                  ? "You haven't created any projects yet. Start by creating your first audio annotation project."
+                  ? "You haven't created any projects yet. Start by creating your first audio project."
                   : 'No projects match your current filters. Try adjusting your search criteria or clearing the filters.'
               }}
             </p>

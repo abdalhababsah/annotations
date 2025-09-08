@@ -6,6 +6,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Task extends Model
 {
@@ -46,6 +47,20 @@ class Task extends Model
     ];
 
     // Relationships
+    public function segments(): HasMany
+    {
+        return $this->hasMany(TaskSegment::class);
+    }
+
+    public function customLabels(): HasMany
+    {
+        return $this->hasMany(TaskCustomLabel::class);
+    }
+
+    public function segmentsWithLabels()
+    {
+        return $this->segments()->withLabels();
+    }
     public function project()
     {
         return $this->belongsTo(Project::class);
@@ -73,10 +88,10 @@ class Task extends Model
     public function approvedAnnotation()
     {
         return $this->hasOne(Annotation::class)
-                    ->where('status', 'approved')
-                    ->latestOfMany();
+            ->where('status', 'approved')
+            ->latestOfMany();
     }
-    
+
     public function latestAnnotation()
     {
         return $this->hasOne(Annotation::class)->latest();
@@ -147,7 +162,7 @@ class Task extends Model
 
     public function canBeAssigned()
     {
-            return $this->status === 'pending' && !$this->isExpired() && $this->batch && ($this->batch->isInProgress() || $this->batch->isPublished());
+        return $this->status === 'pending' && !$this->isExpired() && $this->batch && ($this->batch->isInProgress() || $this->batch->isPublished());
 
     }
 
@@ -179,12 +194,12 @@ class Task extends Model
         $skippedTaskIds = SkipActivity::getSkippedTasksForUser($userId, $projectId);
 
         return static::where('project_id', $projectId)
-                    ->where('status', 'pending')
-                    ->whereHas('batch', function ($query) {
-                        $query->whereIn('status', ['published', 'in_progress']);
-                    })
-                    ->whereNotIn('id', $skippedTaskIds)
-                    ->get();
+            ->where('status', 'pending')
+            ->whereHas('batch', function ($query) {
+                $query->whereIn('status', ['published', 'in_progress']);
+            })
+            ->whereNotIn('id', $skippedTaskIds)
+            ->get();
     }
 
     // Handle expiration - resets task automatically

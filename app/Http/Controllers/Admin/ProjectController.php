@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\SegmentationLabel;
 use App\Services\ProjectService;
 use App\Repositories\Contracts\ProjectRepositoryInterface;
 use App\Repositories\Contracts\UserRepositoryInterface;
@@ -38,13 +39,12 @@ class ProjectController extends Controller
 
         return Inertia::render('Admin/Projects/Index', [
             'projects' => [
-                // IMPORTANT: through(...)->items() returns a plain array, not the paginator object
                 'data' => $pg->through(fn($p) => $this->projectService->transformProjectForIndexItem($p))->items(),
                 'links' => $pg->linkCollection(),
                 'meta' => [
                     'current_page' => $pg->currentPage(),
                     'last_page' => $pg->lastPage(),
-                    'per_page' => $pg->perPage(),     // ← add this
+                    'per_page' => $pg->perPage(),
                     'total' => $pg->total(),
                     'from' => $pg->firstItem(),
                     'to' => $pg->lastItem(),
@@ -60,8 +60,6 @@ class ProjectController extends Controller
                 'status' => $request->get('status'),
                 'sort' => $request->get('sort', 'created_at'),
                 'direction' => $request->get('direction', 'desc'),
-                // REMOVE perPage from filters so the client doesn’t keep sending it
-                // 'perPage' => $request->get('perPage', 12),
             ],
         ]);
     }
@@ -127,6 +125,8 @@ class ProjectController extends Controller
         $rules = [
             'name' => 'required|string|max:255',
             'description' => 'nullable|string|max:1000',
+            'project_type' => ['required', Rule::in(['annotation', 'segmentation'])],
+            'allow_custom_labels' => 'boolean',
             'annotation_guidelines' => 'nullable|string',
             'deadline' => 'nullable|date|after:today',
             'task_time_minutes' => 'required|integer|min:5',
@@ -149,7 +149,7 @@ class ProjectController extends Controller
             $project = $this->projectService->createProjectStepOne($validated, $user, $owner);
 
             return redirect()->route('admin.projects.create.step-two', $project->id)
-                ->with('success', 'Project basic info saved! Now configure annotation dimensions.');
+                ->with('success', 'Project basic info saved! Now configure your project structure.');
 
         } catch (\Exception $e) {
             return back()->withErrors(['error' => 'Failed to create project. Please try again.']);
@@ -168,6 +168,37 @@ class ProjectController extends Controller
             abort(403, 'You do not have permission to edit this project.');
         }
 
+        if ($project->project_type === 'segmentation') {
+            // Segmentation project - show labels configuration
+            $availableLabels = SegmentationLabel::where('is_active', true)->get();
+            $projectLabels = $project->segmentationLabels()->get();
+
+            return Inertia::render('Admin/Projects/Create/StepTwoSegmentation', [
+                'project' => [
+                    'id' => $project->id,
+                    'name' => $project->name,
+                    'status' => $project->status,
+                    'project_type' => $project->project_type,
+                    'allow_custom_labels' => $project->allow_custom_labels,
+                ],
+                'availableLabels' => $availableLabels->map(fn($label) => [
+                    'id' => $label->id,
+                    'name' => $label->name,
+                    'color' => $label->color,
+                    'description' => $label->description,
+                ]),
+                'selectedLabels' => $projectLabels->map(fn($label) => [
+                    'id' => $label->id,
+                    'name' => $label->name,
+                    'color' => $label->color,
+                    'description' => $label->description,
+                ]),
+                'currentStep' => 2,
+                'totalSteps' => 3,
+            ]);
+        }
+
+        // Annotation project - show dimensions configuration
         $existingDimensions = $project->annotationDimensions()->with('dimensionValues')->orderBy('display_order')->get();
 
         return Inertia::render('Admin/Projects/Create/StepTwo', [
@@ -175,6 +206,7 @@ class ProjectController extends Controller
                 'id' => $project->id,
                 'name' => $project->name,
                 'status' => $project->status,
+                'project_type' => $project->project_type,
             ],
             'dimensions' => $existingDimensions->map(fn($dimension) => [
                 'id' => $dimension->id,
@@ -197,11 +229,13 @@ class ProjectController extends Controller
         ]);
     }
 
+
     /**
-     * Store step 2 of project creation (Annotation Dimensions)
+     * Store step 2 for annotation projects (Annotation Dimensions)
      */
     public function storeStepTwo(Request $request, int $projectId): RedirectResponse
     {
+        // dd('storeStepTwo called', $request->all(), $projectId);
         $project = $this->projectRepository->findOrFail($projectId);
         $user = auth()->user();
 
@@ -209,6 +243,56 @@ class ProjectController extends Controller
             abort(403, 'You do not have permission to edit this project.');
         }
 
+        if ($project->project_type === 'segmentation') {
+            return $this->storeSegmentationLabels($request, $project);
+        }
+
+        return $this->storeAnnotationDimensions($request, $project);
+    }
+    /**
+     * Store segmentation labels for segmentation projects
+     */
+    private function storeSegmentationLabels(Request $request, Project $project): RedirectResponse
+    {
+        $validated = $request->validate([
+            'selectedLabels' => 'nullable|array',
+            'selectedLabels.*.id' => 'required_with:selectedLabels|exists:segmentation_labels,id',
+            'newLabels' => 'nullable|array',
+            'newLabels.*.name' => 'required_with:newLabels|string|max:100',
+            'newLabels.*.color' => 'required_with:newLabels|string|regex:/^#[0-9A-Fa-f]{6}$/',
+            'newLabels.*.description' => 'nullable|string|max:255',
+        ], [
+            'selectedLabels.*.id.required_with' => 'Selected label ID is required.',
+            'newLabels.*.name.required_with' => 'New label name is required.',
+        ]);
+    
+        // Custom validation: at least one of selectedLabels or newLabels must have items
+        $selectedCount = count($validated['selectedLabels'] ?? []);
+        $newCount = count($validated['newLabels'] ?? []);
+        
+        if ($selectedCount === 0 && $newCount === 0) {
+            return back()->withErrors([
+                'selectedLabels' => 'At least one label must be selected or created.'
+            ]);
+        }
+    
+        try {
+            $this->projectService->saveProjectSegmentationLabels($project, $validated);
+    
+            return redirect()->route('admin.projects.create.step-three', $project->id)
+                ->with('success', 'Segmentation labels configured successfully! Now review and finalize your project.');
+    
+        } catch (\Exception $e) {
+            \Log::error('Failed to save project segmentation labels: ' . $e->getMessage());
+            return back()->withErrors(['error' => 'Failed to save labels. Please try again.']);
+        }
+    }
+
+    /**
+     * Store annotation dimensions for annotation projects  
+     */
+    private function storeAnnotationDimensions(Request $request, Project $project): RedirectResponse
+    {
         $validated = $request->validate([
             'dimensions' => 'required|array|min:1',
             'dimensions.*.name' => 'required|string|max:100',
@@ -223,47 +307,7 @@ class ProjectController extends Controller
         ], [
             'dimensions.required' => 'At least one annotation dimension is required.',
             'dimensions.min' => 'At least one annotation dimension is required.',
-            'dimensions.*.name.required' => 'Dimension name is required.',
-            'dimensions.*.dimension_type.required' => 'Dimension type is required.',
-            'dimensions.*.dimension_type.in' => 'Dimension type must be categorical or numeric_scale.',
-            'dimensions.*.values.required_if' => 'Categorical dimensions must have at least one value.',
-            'dimensions.*.values.*.value.required_with' => 'Value is required when creating dimension values.',
         ]);
-
-        // Additional validation logic (keeping existing validation)
-        foreach ($validated['dimensions'] as $index => $dimensionData) {
-            if ($dimensionData['dimension_type'] === 'numeric_scale') {
-                if (empty($dimensionData['scale_min']) || empty($dimensionData['scale_max'])) {
-                    return back()->withErrors([
-                        "dimensions.{$index}.scale_min" => 'Scale minimum and maximum are required for numeric dimensions.'
-                    ]);
-                }
-
-                if ($dimensionData['scale_min'] >= $dimensionData['scale_max']) {
-                    return back()->withErrors([
-                        "dimensions.{$index}.scale_max" => 'Scale maximum must be greater than minimum.'
-                    ]);
-                }
-            }
-
-            if ($dimensionData['dimension_type'] === 'categorical') {
-                $hasValidValues = false;
-                if (isset($dimensionData['values'])) {
-                    foreach ($dimensionData['values'] as $valueData) {
-                        if (!empty(trim($valueData['value']))) {
-                            $hasValidValues = true;
-                            break;
-                        }
-                    }
-                }
-
-                if (!$hasValidValues) {
-                    return back()->withErrors([
-                        "dimensions.{$index}.values" => 'Categorical dimensions must have at least one valid value.'
-                    ]);
-                }
-            }
-        }
 
         try {
             $this->projectService->saveProjectDimensions($project, $validated['dimensions']);
@@ -274,6 +318,30 @@ class ProjectController extends Controller
         } catch (\Exception $e) {
             \Log::error('Failed to save project dimensions: ' . $e->getMessage());
             return back()->withErrors(['error' => 'Failed to save dimensions. Please try again.']);
+        }
+    }
+    public function createSegmentationLabel(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:100|unique:segmentation_labels,name',
+            'color' => 'required|string|regex:/^#[0-9A-Fa-f]{6}$/',
+            'description' => 'nullable|string|max:255',
+        ]);
+
+        try {
+            $label = SegmentationLabel::create($validated);
+
+            return response()->json([
+                'label' => [
+                    'id' => $label->id,
+                    'name' => $label->name,
+                    'color' => $label->color,
+                    'description' => $label->description,
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Failed to create label'], 422);
         }
     }
 

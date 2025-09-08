@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Switch } from '@/components/ui/switch';
 import { type BreadcrumbItem } from '@/types';
 import { Head, useForm, Link } from '@inertiajs/vue3';
 import { computed } from 'vue';
@@ -19,7 +20,9 @@ import {
   FileAudio,
   Settings,
   AlertCircle,
-  CheckCircle2
+  CheckCircle2,
+  Tags,
+  Layers
 } from 'lucide-vue-next';
 
 interface ProjectOwner {
@@ -42,10 +45,12 @@ const breadcrumbs: BreadcrumbItem[] = [
   { title: 'Create Project', href: '/admin/projects/create' },
 ];
 
-// Form for step 1 - Basic project information
+// Form for step 1 - Basic project information + project type
 const form = useForm({
   name: '',
   description: '',
+  project_type: 'annotation' as 'annotation' | 'segmentation',
+  allow_custom_labels: false,
   annotation_guidelines: '',
   deadline: '',
   task_time_minutes: 30,
@@ -57,7 +62,8 @@ const form = useForm({
 const isFormValid = computed(() => {
   return form.name.trim().length > 0 &&
     form.task_time_minutes >= 5 &&
-    form.review_time_minutes >= 5;
+    form.review_time_minutes >= 5 &&
+    ['annotation', 'segmentation'].includes(form.project_type);
 });
 
 // Submit step 1
@@ -74,10 +80,23 @@ const formatTime = (minutes: number) => {
   const mins = minutes % 60;
   return mins > 0 ? `${hours}h ${mins}m` : `${hours} hour${hours > 1 ? 's' : ''}`;
 };
+
+// Project type descriptions
+const projectTypeDescriptions = {
+  annotation: {
+    title: 'Audio Annotation',
+    description: 'Evaluate audio files using predefined dimensions (e.g., gender, emotion, quality ratings)',
+    icon: Tags,
+  },
+  segmentation: {
+    title: 'Audio Segmentation',
+    description: 'Segment audio files by labeling time-based sections (e.g., speaker identification, topic changes)',
+    icon: Layers,
+  }
+};
 </script>
 
 <template>
-
   <Head title="Create Project" />
 
   <AppLayout :breadcrumbs="breadcrumbs">
@@ -85,16 +104,16 @@ const formatTime = (minutes: number) => {
       <!-- Header -->
       <div class="flex items-center justify-between">
         <div>
-          <h1 class="text-3xl font-bold tracking-tight">Create Audio Annotation Project</h1>
+          <h1 class="text-3xl font-bold tracking-tight">Create Audio Project</h1>
           <p class="text-muted-foreground">
-            Step {{ currentStep }} of {{ totalSteps }}: Set up basic project information
+            Step {{ currentStep }} of {{ totalSteps }}: Set up basic project information and type
           </p>
         </div>
         <Link :href="route('admin.projects.index')">
-        <Button variant="outline" size="sm">
-          <ArrowLeft class="mr-2 h-4 w-4" />
-          Back to Projects
-        </Button>
+          <Button variant="outline" size="sm">
+            <ArrowLeft class="mr-2 h-4 w-4" />
+            Back to Projects
+          </Button>
         </Link>
       </div>
 
@@ -103,8 +122,7 @@ const formatTime = (minutes: number) => {
         <div class="flex items-center space-x-4 w-full">
           <!-- Step 1 - Active -->
           <div class="flex items-center">
-            <div
-              class="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white text-sm font-medium">
+            <div class="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white text-sm font-medium">
               <span v-if="!isFormValid">1</span>
               <CheckCircle2 v-else class="w-4 h-4" />
             </div>
@@ -115,19 +133,17 @@ const formatTime = (minutes: number) => {
 
           <!-- Step 2 - Inactive -->
           <div class="flex items-center">
-            <div
-              class="flex items-center justify-center w-8 h-8 rounded-full bg-gray-200 text-gray-600 text-sm font-medium">
+            <div class="flex items-center justify-center w-8 h-8 rounded-full bg-gray-200 text-gray-600 text-sm font-medium">
               2
             </div>
-            <span class="ml-2 text-sm font-medium text-gray-600">Dimensions</span>
+            <span class="ml-2 text-sm font-medium text-gray-600">Configuration</span>
           </div>
 
           <Separator class="flex-1" />
 
           <!-- Step 3 - Inactive -->
           <div class="flex items-center">
-            <div
-              class="flex items-center justify-center w-8 h-8 rounded-full bg-gray-200 text-gray-600 text-sm font-medium">
+            <div class="flex items-center justify-center w-8 h-8 rounded-full bg-gray-200 text-gray-600 text-sm font-medium">
               3
             </div>
             <span class="ml-2 text-sm font-medium text-gray-600">Review</span>
@@ -137,10 +153,84 @@ const formatTime = (minutes: number) => {
 
       <!-- Form Content -->
       <form @submit.prevent="submitStepOne">
-        <Card>
+        <!-- Project Type Selection -->
+        <Card class="mb-6">
           <CardHeader>
             <CardTitle class="flex items-center gap-2">
               <Settings class="h-5 w-5" />
+              Project Type
+            </CardTitle>
+          </CardHeader>
+          <CardContent class="space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div 
+                v-for="(typeInfo, type) in projectTypeDescriptions" 
+                :key="type"
+                class="relative cursor-pointer rounded-lg border-2 p-4 transition-all"
+                :class="form.project_type === type 
+                  ? 'border-primary bg-primary/5 ring-2 ring-primary/20' 
+                  : 'border-border hover:border-primary/50'"
+                @click="form.project_type = type as 'annotation' | 'segmentation'"
+              >
+                <div class="flex items-start gap-3">
+                  <div class="mt-1">
+                    <component 
+                      :is="typeInfo.icon" 
+                      class="h-5 w-5"
+                      :class="form.project_type === type ? 'text-primary' : 'text-muted-foreground'"
+                    />
+                  </div>
+                  <div class="flex-1">
+                    <div class="flex items-center gap-2 mb-2">
+                      <h3 class="font-semibold">{{ typeInfo.title }}</h3>
+                      <div 
+                        v-if="form.project_type === type"
+                        class="w-2 h-2 rounded-full bg-primary"
+                      />
+                    </div>
+                    <p class="text-sm text-muted-foreground mb-3">
+                      {{ typeInfo.description }}
+                    </p>
+                    <!-- <ul class="text-xs text-muted-foreground space-y-1">
+                      <li v-for="feature in typeInfo.features" :key="feature" class="flex items-center gap-1">
+                        <div class="w-1 h-1 rounded-full bg-muted-foreground"/>
+                        {{ feature }}
+                      </li>
+                    </ul> -->
+                  </div>
+                </div>
+                <input 
+                  type="radio" 
+                  :value="type" 
+                  v-model="form.project_type"
+                  class="absolute top-4 right-4"
+                />
+              </div>
+            </div>
+
+            <!-- Custom Labels Option (for segmentation only) -->
+            <div v-if="form.project_type === 'segmentation'" class="mt-4 p-4 bg-muted/30 rounded-lg">
+              <div class="flex items-center justify-between">
+                <div class="space-y-1">
+                  <Label class="text-sm font-medium">Allow Custom Labels</Label>
+                  <p class="text-xs text-muted-foreground">
+                    Allow annotators to create new labels during segmentation tasks if they encounter content not covered by predefined labels
+                  </p>
+                </div>
+                <Switch 
+                  v-model:checked="form.allow_custom_labels"
+                  :disabled="form.project_type === 'annotation'"
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <!-- Project Details -->
+        <Card>
+          <CardHeader>
+            <CardTitle class="flex items-center gap-2">
+              <FileAudio class="h-5 w-5" />
               Project Details
             </CardTitle>
           </CardHeader>
@@ -149,8 +239,14 @@ const formatTime = (minutes: number) => {
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div class="space-y-2">
                 <Label for="name">Project Name *</Label>
-                <Input id="name" v-model="form.name" placeholder="Enter project name" class="w-full"
-                  :class="{ 'border-red-500': form.errors.name }" required />
+                <Input 
+                  id="name" 
+                  v-model="form.name" 
+                  placeholder="Enter project name" 
+                  class="w-full"
+                  :class="{ 'border-red-500': form.errors.name }" 
+                  required 
+                />
                 <p v-if="form.errors.name" class="text-sm text-red-600">
                   {{ form.errors.name }}
                 </p>
@@ -179,8 +275,13 @@ const formatTime = (minutes: number) => {
             <!-- Description -->
             <div class="space-y-2">
               <Label for="description">Description</Label>
-              <Textarea id="description" v-model="form.description"
-                placeholder="Describe your audio annotation project..." rows="3" class="w-full" />
+              <Textarea 
+                id="description" 
+                v-model="form.description"
+                placeholder="Describe your audio project..." 
+                rows="3" 
+                class="w-full" 
+              />
               <p class="text-sm text-muted-foreground">
                 Brief overview of what this project is about
               </p>
@@ -196,8 +297,7 @@ const formatTime = (minutes: number) => {
               <Alert>
                 <AlertCircle class="h-4 w-4" />
                 <AlertDescription>
-                  Set time limits for annotation tasks and reviews. Users will be automatically logged out when time
-                  expires.
+                  Set time limits for {{ form.project_type }} tasks and reviews. Users will be automatically logged out when time expires.
                 </AlertDescription>
               </Alert>
 
@@ -207,10 +307,17 @@ const formatTime = (minutes: number) => {
                     <FileAudio class="h-4 w-4" />
                     Task Time Limit (minutes) *
                   </Label>
-                  <Input id="task_time_minutes" v-model.number="form.task_time_minutes" type="number" min="5" max="180"
-                    class="w-full" :class="{ 'border-red-500': form.errors.task_time_minutes }" />
+                  <Input 
+                    id="task_time_minutes" 
+                    v-model.number="form.task_time_minutes" 
+                    type="number" 
+                    min="5" 
+                    max="180"
+                    class="w-full" 
+                    :class="{ 'border-red-500': form.errors.task_time_minutes }" 
+                  />
                   <p class="text-sm text-muted-foreground">
-                    ⏱️ {{ formatTime(form.task_time_minutes) }} per annotation task
+                    ⏱️ {{ formatTime(form.task_time_minutes) }} per {{ form.project_type }} task
                   </p>
                   <p v-if="form.errors.task_time_minutes" class="text-sm text-red-600">
                     {{ form.errors.task_time_minutes }}
@@ -222,8 +329,15 @@ const formatTime = (minutes: number) => {
                     <Users class="h-4 w-4" />
                     Review Time Limit (minutes) *
                   </Label>
-                  <Input id="review_time_minutes" v-model.number="form.review_time_minutes" type="number" min="5"
-                    max="60" class="w-full" :class="{ 'border-red-500': form.errors.review_time_minutes }" />
+                  <Input 
+                    id="review_time_minutes" 
+                    v-model.number="form.review_time_minutes" 
+                    type="number" 
+                    min="5"
+                    max="60" 
+                    class="w-full" 
+                    :class="{ 'border-red-500': form.errors.review_time_minutes }" 
+                  />
                   <p class="text-sm text-muted-foreground">
                     ⏱️ {{ formatTime(form.review_time_minutes) }} per review
                   </p>
@@ -237,20 +351,34 @@ const formatTime = (minutes: number) => {
             <!-- Deadline -->
             <div class="space-y-2">
               <Label for="deadline">Project Deadline (Optional)</Label>
-              <Input id="deadline" v-model="form.deadline" type="date" class="w-full"
-                :min="new Date().toISOString().split('T')[0]" />
+              <Input 
+                id="deadline" 
+                v-model="form.deadline" 
+                type="date" 
+                class="w-full"
+                :min="new Date().toISOString().split('T')[0]" 
+              />
               <p class="text-sm text-muted-foreground">
                 Set an overall deadline for project completion
               </p>
             </div>
 
-            <!-- Annotation Guidelines -->
+            <!-- Guidelines -->
             <div class="space-y-2">
-              <Label for="annotation_guidelines">Annotation Guidelines</Label>
-              <Textarea id="annotation_guidelines" v-model="form.annotation_guidelines"
-                placeholder="Provide detailed instructions for annotators..." rows="4" class="w-full" />
+              <Label for="annotation_guidelines">
+                {{ form.project_type === 'annotation' ? 'Annotation' : 'Segmentation' }} Guidelines
+              </Label>
+              <Textarea 
+                id="annotation_guidelines" 
+                v-model="form.annotation_guidelines"
+                :placeholder="form.project_type === 'annotation' 
+                  ? 'Provide detailed instructions for annotators...' 
+                  : 'Provide detailed instructions for segmentation tasks...'"
+                rows="4" 
+                class="w-full" 
+              />
               <p class="text-sm text-muted-foreground">
-                Detailed instructions that will help annotators understand what to evaluate in the audio files
+                Detailed instructions that will help workers understand what to evaluate in the audio files
               </p>
             </div>
 
@@ -258,8 +386,7 @@ const formatTime = (minutes: number) => {
             <Alert v-if="!isFormValid" variant="destructive">
               <AlertCircle class="h-4 w-4" />
               <AlertDescription>
-                Please fill in all required fields: project name, task time limit (5-180 min), and review time limit
-                (5-60 min).
+                Please fill in all required fields: project name, project type, task time limit (5-180 min), and review time limit (5-60 min).
               </AlertDescription>
             </Alert>
 
@@ -276,13 +403,13 @@ const formatTime = (minutes: number) => {
             <!-- Navigation -->
             <div class="flex items-center justify-between pt-6 border-t">
               <Link :href="route('admin.projects.index')">
-              <Button variant="outline" type="button">
-                Cancel
-              </Button>
+                <Button variant="outline" type="button">
+                  Cancel
+                </Button>
               </Link>
 
               <Button type="submit" :disabled="!isFormValid || form.processing" class="flex items-center gap-2">
-                <span>{{ form.processing ? 'Saving...' : 'Next: Configure Dimensions' }}</span>
+                <span>{{ form.processing ? 'Saving...' : `Next: Configure ${form.project_type === 'annotation' ? 'Dimensions' : 'Labels'}` }}</span>
                 <ArrowRight class="h-4 w-4" />
               </Button>
             </div>

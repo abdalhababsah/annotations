@@ -11,7 +11,7 @@ use Illuminate\Support\Collection as SupportCollection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
-
+use App\Models\SegmentationLabel;
 class ProjectService
 {
     public function __construct(
@@ -34,7 +34,7 @@ class ProjectService
 
     public function paginateUserProjects(User $user, array $filters)
     {
-        $query = Project::with(['owner', 'members', 'tasks.audioFile', 'annotationDimensions']);
+        $query = Project::with(['owner', 'members', 'tasks.audioFile', 'annotationDimensions', 'segmentationLabels']);
         if (!$user->isSystemAdmin()) {
             $query->where(function ($q) use ($user) {
                 $q->where('owner_id', $user->id)
@@ -55,7 +55,6 @@ class ProjectService
         $direction = $filters['direction'] ?? 'desc';
         $query->orderBy($sort, $direction);
 
-        // fixed size
         return $query->paginate(10)->withQueryString();
     }
 
@@ -85,17 +84,21 @@ class ProjectService
             'completed_projects' => $projects->where('status', 'completed')->count(),
             'draft_projects' => $projects->where('status', 'draft')->count(),
             'incomplete_projects' => $projects->filter(function ($project) {
-                return !$project->annotationDimensions()->exists() || $project->status === 'draft';
+                if ($project->project_type === 'annotation') {
+                    return !$project->annotationDimensions()->exists() || $project->status === 'draft';
+                } else {
+                    return !$project->segmentationLabels()->exists() || $project->status === 'draft';
+                }
             })->count(),
         ];
     }
     /**
      * Determine which step of setup the project is on
      */
-    public function determineSetupStep(Project $project, bool $hasDimensions): int
+    public function determineSetupStep(Project $project, bool $hasConfiguration): int
     {
-        if (!$hasDimensions) {
-            return 2; // Need to configure dimensions
+        if (!$hasConfiguration) {
+            return 2; // Need to configure dimensions/labels
         }
 
         if ($project->status === 'draft') {
@@ -104,6 +107,7 @@ class ProjectService
 
         return 0; // Setup complete (active project)
     }
+
 
     /**
      * Quick activate a project that has dimensions but is still in draft
@@ -130,15 +134,63 @@ class ProjectService
     {
         return DB::transaction(function () use ($data, $creator, $owner) {
             $targetOwner = $owner ?? $creator;
+            
+            // Set default values for segmentation projects
+            if ($data['project_type'] === 'segmentation') {
+                $data['allow_custom_labels'] = $data['allow_custom_labels'] ?? false;
+            }
+            
             return $this->projectRepository->createWithOwner($data, $targetOwner);
         });
     }
+    public function saveProjectSegmentationLabels(Project $project, array $data): void
+    {
+        if ($project->project_type !== 'segmentation') {
+            throw new \Exception('This method is only for segmentation projects.');
+        }
 
-    /**
-     * Save project dimensions (Step 2)
-     */
+        DB::transaction(function () use ($project, $data) {
+            // Remove existing label assignments
+            $project->segmentationLabels()->detach();
+
+            $displayOrder = 0;
+
+            // Handle new labels first (create them)
+            if (!empty($data['newLabels'])) {
+                foreach ($data['newLabels'] as $newLabelData) {
+                    $label = SegmentationLabel::create([
+                        'name' => $newLabelData['name'],
+                        'color' => $newLabelData['color'],
+                        'description' => $newLabelData['description'] ?? null,
+                        'is_active' => true,
+                    ]);
+
+                    // Attach new label to project
+                    $project->segmentationLabels()->attach($label->id, [
+                        'display_order' => $displayOrder++,
+                    ]);
+                }
+            }
+
+            // Handle selected existing labels
+            if (!empty($data['selectedLabels'])) {
+                foreach ($data['selectedLabels'] as $selectedLabel) {
+                    // Skip if this label was just created (avoid duplicates)
+                    if (!$project->segmentationLabels()->where('label_id', $selectedLabel['id'])->exists()) {
+                        $project->segmentationLabels()->attach($selectedLabel['id'], [
+                            'display_order' => $displayOrder++,
+                        ]);
+                    }
+                }
+            }
+        });
+    }
     public function saveProjectDimensions(Project $project, array $dimensions): void
     {
+        if ($project->project_type !== 'annotation') {
+            throw new \Exception('This method is only for annotation projects.');
+        }
+
         DB::transaction(function () use ($project, $dimensions) {
             // Delete existing dimensions and their values (cascade will handle dimension values)
             $project->annotationDimensions()->delete();
@@ -177,13 +229,21 @@ class ProjectService
      */
     public function finalizeProject(Project $project): void
     {
-        // Validate that project has dimensions before activation
-        if (!$project->annotationDimensions()->exists()) {
-            throw new \Exception('Cannot activate project without annotation dimensions. Please add at least one dimension.');
+        if ($project->project_type === 'annotation') {
+            // Validate that annotation project has dimensions
+            if (!$project->annotationDimensions()->exists()) {
+                throw new \Exception('Cannot activate annotation project without annotation dimensions. Please add at least one dimension.');
+            }
+        } elseif ($project->project_type === 'segmentation') {
+            // Validate that segmentation project has labels
+            if (!$project->segmentationLabels()->exists()) {
+                throw new \Exception('Cannot activate segmentation project without segmentation labels. Please select at least one label.');
+            }
         }
 
         $this->projectRepository->update($project->id, ['status' => 'active']);
     }
+
 
     /**
      * Transform project for show display
@@ -192,12 +252,14 @@ class ProjectService
     {
         $statistics = $this->projectRepository->getProjectStatistics($project);
         $batchStats = $project->getBatchStatistics();
+        
         return [
             'id' => $project->id,
             'name' => $project->name,
             'description' => $project->description,
             'status' => $project->status,
-            'project_type' => 'audio',
+            'project_type' => $project->project_type, // annotation or segmentation
+            'allow_custom_labels' => $project->allow_custom_labels,
             'ownership_type' => $project->created_by === $project->owner_id ? 'self_created' : 'admin_assigned',
             'quality_threshold' => 0.8,
             'task_time_minutes' => $project->task_time_minutes,
@@ -464,16 +526,22 @@ class ProjectService
      */
     public function getProjectSetupStatus(Project $project): array
     {
-        $hasDimensions = $project->annotationDimensions()->exists();
-        $dimensionsCount = $project->annotationDimensions()->count();
+        if ($project->project_type === 'annotation') {
+            $hasConfiguration = $project->annotationDimensions()->exists();
+            $configurationCount = $project->annotationDimensions()->count();
+        } else {
+            $hasConfiguration = $project->segmentationLabels()->exists();
+            $configurationCount = $project->segmentationLabels()->count();
+        }
 
         return [
-            'has_dimensions' => $hasDimensions,
-            'dimensions_count' => $dimensionsCount,
-            'is_setup_incomplete' => !$hasDimensions || $project->status === 'draft',
-            'can_be_activated' => $hasDimensions && $project->status === 'draft',
-            'setup_step' => $this->determineSetupStep($project, $hasDimensions),
+            'has_configuration' => $hasConfiguration,
+            'configuration_count' => $configurationCount,
+            'is_setup_incomplete' => !$hasConfiguration || $project->status === 'draft',
+            'can_be_activated' => $hasConfiguration && $project->status === 'draft',
+            'setup_step' => $this->determineSetupStep($project, $hasConfiguration),
             'status' => $project->status,
+            'project_type' => $project->project_type,
         ];
     }
 
@@ -482,9 +550,12 @@ class ProjectService
      */
     public function updateProjectStatus(Project $project, string $status): void
     {
-        // Prevent activation if no dimensions exist
-        if ($status === 'active' && !$project->annotationDimensions()->exists()) {
-            throw new \Exception('Cannot activate project without annotation dimensions. Please add dimensions first.');
+        if ($status === 'active') {
+            if ($project->project_type === 'annotation' && !$project->annotationDimensions()->exists()) {
+                throw new \Exception('Cannot activate annotation project without annotation dimensions. Please add dimensions first.');
+            } elseif ($project->project_type === 'segmentation' && !$project->segmentationLabels()->exists()) {
+                throw new \Exception('Cannot activate segmentation project without segmentation labels. Please select labels first.');
+            }
         }
 
         $this->projectRepository->update($project->id, ['status' => $status]);
@@ -525,31 +596,42 @@ class ProjectService
             ->unique('id')
             ->count();
 
-        // Dimensions (prefer loaded relation if present)
-        if ($project->relationLoaded('annotationDimensions')) {
-            $hasDimensions = $project->annotationDimensions->isNotEmpty();
-            $dimensionsCount = $project->annotationDimensions->count();
-        } else {
-            $hasDimensions = $project->annotationDimensions()->exists();
-            $dimensionsCount = $project->annotationDimensions()->count();
+        // Check project configuration based on type
+        if ($project->project_type === 'annotation') {
+            if ($project->relationLoaded('annotationDimensions')) {
+                $hasConfiguration = $project->annotationDimensions->isNotEmpty();
+                $configurationCount = $project->annotationDimensions->count();
+            } else {
+                $hasConfiguration = $project->annotationDimensions()->exists();
+                $configurationCount = $project->annotationDimensions()->count();
+            }
+        } else { // segmentation
+            if ($project->relationLoaded('segmentationLabels')) {
+                $hasConfiguration = $project->segmentationLabels->isNotEmpty();
+                $configurationCount = $project->segmentationLabels->count();
+            } else {
+                $hasConfiguration = $project->segmentationLabels()->exists();
+                $configurationCount = $project->segmentationLabels()->count();
+            }
         }
 
-        $isIncomplete = !$hasDimensions || $project->status === 'draft';
-        $canBeActivated = $hasDimensions && $project->status === 'draft';
+        $isIncomplete = !$hasConfiguration || $project->status === 'draft';
+        $canBeActivated = $hasConfiguration && $project->status === 'draft';
 
         return [
             'id' => $project->id,
             'name' => $project->name,
             'description' => $project->description,
             'status' => $project->status,
-            'project_type' => 'audio',
+            'project_type' => $project->project_type,
+            'allow_custom_labels' => $project->allow_custom_labels,
             'completion_percentage' => $project->completion_percentage,
             'team_size' => $members->count(),
             'task_time_minutes' => $project->task_time_minutes,
             'review_time_minutes' => $project->review_time_minutes,
             'audio_files_count' => $audioFilesCount,
             'tasks_count' => $tasks->count(),
-            'dimensions_count' => $dimensionsCount,
+            'configuration_count' => $configurationCount,
             'owner' => [
                 'id' => $project->owner->id,
                 'name' => $project->owner->full_name,
@@ -560,10 +642,10 @@ class ProjectService
             'updated_at' => $project->updated_at->format('Y-m-d H:i'),
 
             // setup helpers
-            'has_dimensions' => $hasDimensions,
+            'has_configuration' => $hasConfiguration,
             'is_setup_incomplete' => $isIncomplete,
             'can_be_activated' => $canBeActivated,
-            'setup_step' => $this->determineSetupStep($project, $hasDimensions),
+            'setup_step' => $this->determineSetupStep($project, $hasConfiguration),
         ];
     }
 

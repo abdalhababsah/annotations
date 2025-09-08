@@ -23,7 +23,8 @@ import {
   AlertCircle,
   Palette,
   Save,
-  Search
+  Search,
+  Layers
 } from 'lucide-vue-next';
 
 interface SegmentationLabel {
@@ -75,7 +76,8 @@ const newLabel = ref({
 // Available color options
 const colorOptions = [
   '#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6',
-  '#EC4899', '#06B6D4', '#84CC16', '#F97316', '#6366F1'
+  '#EC4899', '#06B6D4', '#84CC16', '#F97316', '#6366F1',
+  '#F43F5E', '#14B8A6', '#A855F7', '#EAB308', '#22C55E'
 ];
 
 // Filtered available labels based on search
@@ -98,9 +100,31 @@ const isFormValid = computed(() => {
 });
 
 const isNewLabelValid = computed(() => {
-  return newLabel.value.name.trim().length > 0 && 
-         newLabel.value.color.match(/^#[0-9A-Fa-f]{6}$/);
+  const nameValid = newLabel.value.name.trim().length > 0;
+  const colorValid = newLabel.value.color.match(/^#[0-9A-Fa-f]{6}$/);
+  const nameNotDuplicate = !isNameDuplicate(newLabel.value.name.trim());
+  
+  return nameValid && colorValid && nameNotDuplicate;
 });
+
+// Check if label name is duplicate
+const isNameDuplicate = (name: string) => {
+  const trimmedName = name.toLowerCase().trim();
+  
+  // Check against selected labels
+  const selectedNames = form.selectedLabels.map(l => l.name.toLowerCase());
+  if (selectedNames.includes(trimmedName)) return true;
+  
+  // Check against new labels
+  const newLabelNames = form.newLabels.map(l => l.name.toLowerCase());
+  if (newLabelNames.includes(trimmedName)) return true;
+  
+  // Check against available labels
+  const availableNames = props.availableLabels.map(l => l.name.toLowerCase());
+  if (availableNames.includes(trimmedName)) return true;
+  
+  return false;
+};
 
 // Methods
 const toggleLabel = (label: SegmentationLabel, checked: boolean) => {
@@ -127,7 +151,7 @@ const removeSelectedLabel = (labelId: number) => {
 
 const addNewLabel = () => {
   if (isNewLabelValid.value) {
-    const tempId = Date.now().toString();
+    const tempId = Date.now().toString() + Math.random().toString(36).substring(2);
     form.newLabels.push({
       name: newLabel.value.name.trim(),
       color: newLabel.value.color,
@@ -138,7 +162,7 @@ const addNewLabel = () => {
     // Reset form
     newLabel.value = {
       name: '',
-      color: '#3B82F6',
+      color: getRandomColor(),
       description: ''
     };
     
@@ -156,7 +180,7 @@ const removeNewLabel = (tempId: string) => {
 const openCreateLabelModal = () => {
   newLabel.value = {
     name: '',
-    color: colorOptions[Math.floor(Math.random() * colorOptions.length)],
+    color: getRandomColor(),
     description: ''
   };
   showCreateLabelModal.value = true;
@@ -184,9 +208,54 @@ const goToPreviousStep = () => {
 };
 
 // Generate random color
-const generateRandomColor = () => {
-  newLabel.value.color = colorOptions[Math.floor(Math.random() * colorOptions.length)];
+const getRandomColor = () => {
+  return colorOptions[Math.floor(Math.random() * colorOptions.length)];
 };
+
+const generateRandomColor = () => {
+  newLabel.value.color = getRandomColor();
+};
+
+// Watch for label name changes to check duplicates
+const labelNameError = computed(() => {
+  const name = newLabel.value.name.trim();
+  if (!name) return '';
+  if (isNameDuplicate(name)) {
+    return 'This label name already exists';
+  }
+  return '';
+});
+
+// Quick add functionality
+const quickAddLabel = (name: string) => {
+  if (!isNameDuplicate(name)) {
+    form.newLabels.push({
+      name: name.trim(),
+      color: getRandomColor(),
+      description: '',
+      tempId: Date.now().toString() + Math.random().toString(36).substring(2)
+    });
+  }
+};
+
+// Common label suggestions
+const commonLabelSuggestions = [
+  'Speaker A', 'Speaker B', 'Speaker C', 
+  'Music', 'Background Noise', 'Silence',
+  'Narrator', 'Interview', 'Discussion'
+];
+
+const filteredSuggestions = computed(() => {
+  if (!searchQuery.value.trim()) {
+    // Show all available suggestions when no search
+    return commonLabelSuggestions.filter(suggestion => !isNameDuplicate(suggestion));
+  }
+  // Show matching suggestions when searching
+  return commonLabelSuggestions.filter(suggestion => 
+    !isNameDuplicate(suggestion) && 
+    suggestion.toLowerCase().includes(searchQuery.value.toLowerCase())
+  );
+});
 </script>
 
 <template>
@@ -248,12 +317,18 @@ const generateRandomColor = () => {
       <Card class="mb-6">
         <CardContent class="pt-6">
           <div class="flex items-center gap-4">
-            <div>
-              <h3 class="font-medium">{{ project.name }}</h3>
-              <p class="text-sm text-muted-foreground">Audio Segmentation Project</p>
+            <div class="flex items-center gap-2">
+              <Layers class="h-5 w-5 text-blue-600" />
+              <div>
+                <h3 class="font-medium">{{ project.name }}</h3>
+                <p class="text-sm text-muted-foreground">Audio Segmentation Project</p>
+              </div>
             </div>
             <Badge variant="outline">{{ project.status }}</Badge>
-            <Badge v-if="project.allow_custom_labels" variant="secondary">Custom Labels Enabled</Badge>
+            <Badge v-if="project.allow_custom_labels" variant="secondary" class="gap-1">
+              <Tags class="h-3 w-3" />
+              Custom Labels Enabled
+            </Badge>
           </div>
         </CardContent>
       </Card>
@@ -266,6 +341,7 @@ const generateRandomColor = () => {
               <CardTitle class="flex items-center gap-2">
                 <Tags class="h-5 w-5" />
                 Available Labels
+                <Badge variant="outline">{{ filteredAvailableLabels.length }}</Badge>
               </CardTitle>
               <Button @click="openCreateLabelModal" size="sm">
                 <Plus class="mr-2 h-4 w-4" />
@@ -284,6 +360,27 @@ const generateRandomColor = () => {
               />
             </div>
 
+            <!-- Quick Add Suggestions -->
+            <div v-if="filteredSuggestions.length > 0" class="mb-4">
+            <p class="text-sm font-medium text-muted-foreground mb-2">
+              {{ searchQuery ? 'Matching suggestions:' : 'Quick Add:' }}
+            </p>
+              <div class="flex flex-wrap gap-2">
+                <Button 
+                  v-for="suggestion in filteredSuggestions.slice(0, 3)" 
+                  :key="suggestion"
+                  @click="quickAddLabel(suggestion)"
+                  variant="outline" 
+                  size="sm"
+                  class="h-7 text-xs"
+                >
+                  <Plus class="h-3 w-3 mr-1" />
+                  {{ suggestion }}
+                </Button>
+              </div>
+              <Separator class="my-4" />
+            </div>
+
             <!-- Labels List -->
             <div class="space-y-2 max-h-96 overflow-y-auto">
               <div 
@@ -296,7 +393,7 @@ const generateRandomColor = () => {
                   @update:checked="(checked) => toggleLabel(label, checked)"
                 />
                 <div 
-                  class="w-4 h-4 rounded-full border-2 border-white shadow-sm"
+                  class="w-4 h-4 rounded-full border-2 border-white shadow-sm flex-shrink-0"
                   :style="{ backgroundColor: label.color }"
                 />
                 <div class="flex-1 min-w-0">
@@ -337,6 +434,7 @@ const generateRandomColor = () => {
           <CardContent>
             <!-- Selected Existing Labels -->
             <div v-if="form.selectedLabels.length > 0" class="space-y-2 mb-4">
+              <div class="text-xs font-medium text-muted-foreground mb-2">From Library</div>
               <div 
                 v-for="label in form.selectedLabels" 
                 :key="label.id"
@@ -344,7 +442,7 @@ const generateRandomColor = () => {
               >
                 <div class="flex items-center gap-3">
                   <div 
-                    class="w-4 h-4 rounded-full border-2 border-white shadow-sm"
+                    class="w-4 h-4 rounded-full border-2 border-white shadow-sm flex-shrink-0"
                     :style="{ backgroundColor: label.color }"
                   />
                   <div>
@@ -374,7 +472,7 @@ const generateRandomColor = () => {
               >
                 <div class="flex items-center gap-3">
                   <div 
-                    class="w-4 h-4 rounded-full border-2 border-white shadow-sm"
+                    class="w-4 h-4 rounded-full border-2 border-white shadow-sm flex-shrink-0"
                     :style="{ backgroundColor: label.color }"
                   />
                   <div>
@@ -382,7 +480,7 @@ const generateRandomColor = () => {
                     <p v-if="label.description" class="text-xs text-muted-foreground">
                       {{ label.description }}
                     </p>
-                    <Badge variant="outline" class="text-xs">New</Badge>
+                    <Badge variant="outline" class="text-xs mt-1">New</Badge>
                   </div>
                 </div>
                 <Button 
@@ -403,6 +501,10 @@ const generateRandomColor = () => {
               <p class="text-gray-600 mb-4">
                 Select labels from the available list or create new ones
               </p>
+              <Button @click="openCreateLabelModal" size="sm">
+                <Plus class="mr-2 h-4 w-4" />
+                Create Your First Label
+              </Button>
             </div>
 
             <!-- Custom Labels Info -->
@@ -454,7 +556,7 @@ const generateRandomColor = () => {
 
     <!-- Create Label Modal -->
     <Dialog :open="showCreateLabelModal" @update:open="showCreateLabelModal = $event">
-      <DialogContent>
+      <DialogContent class="max-w-md">
         <DialogHeader>
           <DialogTitle>Create New Segmentation Label</DialogTitle>
         </DialogHeader>
@@ -466,7 +568,11 @@ const generateRandomColor = () => {
               v-model="newLabel.name"
               placeholder="e.g., Speaker A, Music, Background Noise"
               @keydown.enter.prevent="addNewLabel"
+              :class="{ 'border-red-500': labelNameError }"
             />
+            <p v-if="labelNameError" class="text-sm text-red-600">
+              {{ labelNameError }}
+            </p>
           </div>
 
           <!-- Label Color -->
@@ -476,14 +582,15 @@ const generateRandomColor = () => {
               <Input
                 v-model="newLabel.color"
                 type="color"
-                class="w-16 h-10 p-1 rounded border"
+                class="w-16 h-10 p-1 rounded border cursor-pointer"
               />
               <Input
                 v-model="newLabel.color"
                 placeholder="#3B82F6"
                 class="flex-1 font-mono text-sm"
+                pattern="^#[0-9A-Fa-f]{6}$"
               />
-              <Button @click="generateRandomColor" variant="outline" size="sm">
+              <Button @click="generateRandomColor" variant="outline" size="sm" type="button">
                 <Palette class="h-4 w-4" />
               </Button>
             </div>
@@ -494,7 +601,7 @@ const generateRandomColor = () => {
                 v-for="color in colorOptions"
                 :key="color"
                 type="button"
-                class="w-8 h-8 rounded border-2 border-white shadow-sm hover:scale-110 transition-transform"
+                class="w-8 h-8 rounded border-2 border-white shadow-sm hover:scale-110 transition-transform cursor-pointer"
                 :style="{ backgroundColor: color }"
                 :class="newLabel.color === color ? 'ring-2 ring-primary' : ''"
                 @click="newLabel.color = color"
@@ -531,10 +638,10 @@ const generateRandomColor = () => {
 
           <!-- Modal Actions -->
           <div class="flex items-center justify-end gap-2 pt-4 border-t">
-            <Button @click="closeCreateLabelModal" variant="outline">
+            <Button @click="closeCreateLabelModal" variant="outline" type="button">
               Cancel
             </Button>
-            <Button @click="addNewLabel" :disabled="!isNewLabelValid">
+            <Button @click="addNewLabel" :disabled="!isNewLabelValid" type="button">
               <Save class="mr-2 h-4 w-4" />
               Create Label
             </Button>

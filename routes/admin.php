@@ -46,6 +46,9 @@ Route::middleware(['auth','role:SystemAdmin'])->prefix('admin')->name('admin.')-
         Route::get('/{project}/step-three', [ProjectController::class, 'createStepThree'])->name('create.step-three');
         Route::post('/{project}/finalize', [ProjectController::class, 'finalizeProject'])->name('finalize');
 
+        // ===== SEGMENTATION LABEL ROUTES =====
+        Route::post('/labels', [ProjectController::class, 'createSegmentationLabel'])->name('labels.create');
+
         // ===== PROJECT STATUS MANAGEMENT ROUTES =====
         Route::post('/{project}/quick-activate', [ProjectController::class, 'quickActivate'])->name('quick-activate');
         Route::patch('/{project}/status', [ProjectController::class, 'updateStatus'])->name('update-status');

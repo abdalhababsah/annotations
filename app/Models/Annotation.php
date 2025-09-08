@@ -5,6 +5,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Annotation extends Model
 {
@@ -25,6 +26,20 @@ class Annotation extends Model
     ];
 
     // Relationships
+    public function segments(): HasMany
+    {
+        return $this->hasMany(TaskSegment::class);
+    }
+
+    public function getTotalSegmentDurationAttribute(): float
+    {
+        return $this->segments->sum('duration');
+    }
+
+    public function getSegmentCountAttribute(): int
+    {
+        return $this->segments->count();
+    }
     public function task()
     {
         return $this->belongsTo(Task::class);
@@ -79,8 +94,9 @@ class Annotation extends Model
     // Helper methods
     public function getFormattedTimeSpentAttribute()
     {
-        if (!$this->total_time_spent) return '00:00';
-        
+        if (!$this->total_time_spent)
+            return '00:00';
+
         $minutes = floor($this->total_time_spent / 60);
         $seconds = $this->total_time_spent % 60;
         return sprintf('%02d:%02d', $minutes, $seconds);

@@ -6,7 +6,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Carbon\Carbon;
-
+use Illuminate\Database\Eloquent\Relations\HasMany;
 class Review extends Model
 {
     use HasFactory;
@@ -30,6 +30,21 @@ class Review extends Model
     ];
 
     // Relationships
+    public function segmentChanges(): HasMany
+    {
+        return $this->hasMany(ReviewSegmentChange::class);
+    }
+    
+    public function hasSegmentChanges(): bool
+    {
+        return $this->segmentChanges()->exists();
+    }
+    
+    public function getSegmentChangesCountAttribute(): int
+    {
+        return $this->segmentChanges->count();
+    }
+    
     public function annotation()
     {
         return $this->belongsTo(Annotation::class);

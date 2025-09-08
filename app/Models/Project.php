@@ -20,10 +20,13 @@ class Project extends Model
         'review_time_minutes',
         'annotation_guidelines',
         'deadline',
+        'project_type',
+        'allow_custom_labels',
     ];
 
     protected $casts = [
         'deadline' => 'datetime',
+        'allow_custom_labels' => 'boolean',
     ];
 
     // Relationships
@@ -172,9 +175,9 @@ class Project extends Model
 
         return Annotation::whereHas('task', function ($query) {
             $query->where('project_id', $this->id)
-                  ->whereHas('batch', function ($batchQuery) {
-                      $batchQuery->whereIn('status', ['published', 'in_progress']);
-                  });
+                ->whereHas('batch', function ($batchQuery) {
+                    $batchQuery->whereIn('status', ['published', 'in_progress']);
+                });
         })
             ->where('status', 'submitted')
             ->whereNotIn('id', $skippedAnnotationIds)
@@ -186,9 +189,9 @@ class Project extends Model
     {
         $annotation = Annotation::whereHas('task', function ($query) {
             $query->where('project_id', $this->id)
-                  ->whereHas('batch', function ($batchQuery) {
-                      $batchQuery->whereIn('status', ['published', 'in_progress']);
-                  });
+                ->whereHas('batch', function ($batchQuery) {
+                    $batchQuery->whereIn('status', ['published', 'in_progress']);
+                });
         })
             ->where('id', $annotationId)
             ->where('status', 'submitted')
@@ -232,7 +235,8 @@ class Project extends Model
         ];
     }
 
-    public function projectMemberships(){
+    public function projectMemberships()
+    {
         return $this->hasMany(ProjectMember::class);
 
     }
@@ -240,11 +244,40 @@ class Project extends Model
     public function getAvailableBatches()
     {
         return $this->batches()
-                   ->whereIn('status', ['published', 'in_progress'])
-                   ->where('total_tasks', '>', 'completed_tasks')
-                   ->with(['tasks' => function ($query) {
-                       $query->where('status', 'pending');
-                   }])
-                   ->get();
+            ->whereIn('status', ['published', 'in_progress'])
+            ->where('total_tasks', '>', 'completed_tasks')
+            ->with([
+                'tasks' => function ($query) {
+                    $query->where('status', 'pending');
+                }
+            ])
+            ->get();
+    }
+    public function segmentationLabels()
+    {
+        return $this->belongsToMany(SegmentationLabel::class, 'project_segmentation_labels', 'project_id', 'label_id')
+            ->withPivot('display_order')
+            ->withTimestamps()
+            ->orderBy('project_segmentation_labels.display_order');
+    }
+
+    public function projectSegmentationLabels()
+    {
+        return $this->hasMany(ProjectSegmentationLabel::class);
+    }
+
+    public function isSegmentationProject(): bool
+    {
+        return $this->project_type === 'segmentation';
+    }
+
+    public function isAnnotationProject(): bool
+    {
+        return $this->project_type === 'annotation';
+    }
+
+    public function allowsCustomLabels(): bool
+    {
+        return $this->allow_custom_labels;
     }
 }

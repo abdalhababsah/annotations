@@ -6,6 +6,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class User extends Authenticatable
 {
@@ -31,7 +32,10 @@ class User extends Authenticatable
         'is_active' => 'boolean',
     ];
 
-    // Relationships
+    public function createdCustomLabels(): HasMany
+    {
+        return $this->hasMany(TaskCustomLabel::class, 'created_by');
+    }
     public function ownedProjects()
     {
         return $this->hasMany(Project::class, 'owner_id');
@@ -50,8 +54,8 @@ class User extends Authenticatable
     public function projects()
     {
         return $this->belongsToMany(Project::class, 'project_members')
-                    ->withPivot('role', 'is_active', 'workload_limit', 'assigned_by')
-                    ->withTimestamps();
+            ->withPivot('role', 'is_active', 'workload_limit', 'assigned_by')
+            ->withTimestamps();
     }
 
     public function assignedTasks()
