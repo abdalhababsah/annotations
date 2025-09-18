@@ -500,11 +500,11 @@ const skip = async () => {
               <!-- <Button variant="outline" size="lg" class="gap-2" :disabled="saving" @click="saveDraft">
                 <Save class="h-4 w-4" />
                 Save Draft
-              </Button>
+              </Button> -->
               <Button size="lg" class="gap-2 px-8" :disabled="submitting || isRequiredMissing.length > 0" @click="submit">
                 <CheckCircle2 class="h-4 w-4" />
                 Submit
-              </Button> -->
+              </Button> 
             </div>
           </div>
         </CardContent>
