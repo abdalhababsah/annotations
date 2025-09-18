@@ -9,104 +9,163 @@
     <div class="relative min-h-screen overflow-x-hidden bg-background">
       <!-- Header without border -->
       <header class="sticky top-0 z-40 w-full bg-background/80 backdrop-blur-md">
-          <div class="container mx-auto flex h-16 items-center justify-between px-4 sm:px-6">
-            <div 
-              class="flex items-center gap-3 animate-fadeInUp"
-              :style="{ animationDelay: '0ms' }"
-            >
-              <div class="flex items-center">
-                <AppLogo />
-              </div>
+        <div class="container mx-auto flex h-16 items-center justify-between px-4 sm:px-6">
+          <div class="flex items-center gap-3 animate-fadeInUp" :style="{ animationDelay: '0ms' }">
+            <div class="flex items-center">
+              <AppLogo />
             </div>
-            
-            <nav 
-              class="flex items-center gap-4 animate-fadeInUp"
-              :style="{ animationDelay: '300ms' }"
-            >
-              <div class="hidden gap-1 md:flex">
-                <Button variant="ghost" size="sm">
-                  <a href="#features">Features</a>
-                </Button>
-                <Button variant="ghost" size="sm">
-                  <a href="#how-it-works">How It Works</a>
-                </Button>
-                <Button variant="ghost" size="sm">
-                  <a href="#annotation-types">Types</a>
-                </Button>
-                <Button variant="ghost" size="sm">
-                  <a href="#integrations">Integrations</a>
-                </Button>
-              </div>
-              
-              <Button v-if="$page.props.auth.user" variant="default">
-                <Link :href="route('dashboard')">
-                  Dashboard
+          </div>
+
+          <nav class="flex items-center gap-4 animate-fadeInUp" :style="{ animationDelay: '300ms' }">
+            <div class="hidden gap-1 md:flex">
+              <Button variant="ghost" size="sm">
+                <a href="#features">Features</a>
+              </Button>
+              <Button variant="ghost" size="sm">
+                <a href="#how-it-works">How It Works</a>
+              </Button>
+              <Button variant="ghost" size="sm">
+                <a href="#annotation-types">Types</a>
+              </Button>
+              <Button variant="ghost" size="sm">
+                <a href="#integrations">Integrations</a>
+              </Button>
+            </div>
+
+            <Button v-if="$page.props.auth.user" variant="default">
+              <Link :href="route('dashboard')">
+              Dashboard
+              </Link>
+            </Button>
+            <template v-else>
+              <Button variant="ghost">
+                <Link :href="route('login')">
+                Log in
                 </Link>
               </Button>
-              <template v-else>
-                <Button variant="ghost">
-                  <Link :href="route('login')">
-                    Log in
-                  </Link>
-                </Button>
-                <Button variant="default">
-                  <Link :href="route('register')">
-                    Register
-                  </Link>
-                </Button>
-              </template>
-</nav>
-</div>
-</header>
+              <Button variant="default">
+                <Link :href="route('register')">
+                Register
+                </Link>
+              </Button>
+            </template>
+          </nav>
+        </div>
+      </header>
 
-      <!-- Hero Section with Unicorn Studio Background -->
-      <section class="relative flex min-h-[90vh] items-center overflow-hidden">
-        <!-- Unicorn Studio Background -->
-        <!-- <div class="absolute inset-0 z-0 w-full h-full overflow-hidden">
-            <div data-us-project="Lp0iYqmMNjZk4wXHejyG" style="width: 100%; height: 100%; position: absolute;"></div>
-          </div> -->
+<!-- Hero Section -->
+<section class="relative flex min-h-screen items-center overflow-hidden ">
+  
+  <!-- Floating Background Elements -->
+  <div class="absolute inset-0 overflow-hidden pointer-events-none">
+    <div class="floating-element absolute top-20 left-20 w-32 h-32 bg-gradient-to-r from-blue-400 to-green-500 rounded-full opacity-20 blur-xl"></div>
+    <div class="floating-element absolute top-40 right-32 w-24 h-24 bg-gradient-to-r from-cyan-400 to-green-500 rounded-full opacity-15 blur-lg"></div>
+    <div class="floating-element absolute bottom-32 left-32 w-20 h-20 bg-gradient-to-r from-green-400 to-green-500 rounded-full opacity-25 blur-lg"></div>
+  </div>
 
-        <div class="container relative z-10 mx-auto px-4 py-16 sm:px-6 sm:py-24">
-          <div class="flex flex-col items-start justify-center text-left">
-            <!-- Modern Badge -->
-            <div class="mb-8 text-left animate-fadeInUp" :style="{ animationDelay: '0ms' }">
-              <Badge variant="outline" class="px-4 py-2 text-sm backdrop-blur-sm border-primary/20">
-                <span class="mr-2 inline-block h-2 w-2 rounded-full bg-primary animate-pulse"></span>
-                Intelligent Data Annotation Platform
-              </Badge>
-            </div>
+  <div class="container relative z-10 mx-auto px-4 py-16 sm:px-6">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+      
+      <!-- Left Content -->
+      <div class="text-left space-y-8">
+        
+        <!-- Badge -->
+        <div class="fade-in">
+          <Badge variant="outline" class="px-4 py-2 text-sm backdrop-blur-sm border-primary/30 bg-white/50">
+            <span class="mr-2 inline-block h-2 w-2 rounded-full bg-primary animate-pulse"></span>
+            Empowering MENA Developers
+          </Badge>
+        </div>
 
-            <!-- Main heading with animated gradient -->
-            <h1
-              class="max-w-4xl text-left text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl lg:text-7xl animate-fadeInUp"
-              :style="{ animationDelay: '200ms' }">
-              Accelerate AI with
-              <span class="relative inline-block">
-                <span
-                  class="absolute inset-0 bg-gradient-to-r from-primary via-primary/80 to-primary bg-clip-text blur-sm"></span>
-                <span
-                  class="relative bg-gradient-to-r from-primary via-primary/80 to-primary bg-clip-text text-transparent">Smart
-                  Labeling & Annotation</span>
+        <!-- Main Heading -->
+        <div class="fade-in space-y-4">
+          <h1 class="text-5xl lg:text-7xl font-bold tracking-tight text-gray-900">
+            Building the
+            <span class="relative">
+              <span class="bg-gradient-to-r  bg-clip-text">
+                Future
               </span>
-            </h1>
-            <div class="h-[140px] sm:h-[190px] md:h-[260px] lg:h-[344px]"></div>
-            <p class="mb-10 max-w-2xl text-left text-lg text-muted-foreground animate-fadeInUp"
-              :style="{ animationDelay: '400ms' }">
-              Create high-quality training datasets faster with our comprehensive annotation platform designed for text,
-              image, and multimodal AI projects.
-            </p>
+              <div class="absolute -bottom-2 left-0 w-full h-1 bg-gradient-to-r from-green-600 to-black-600 rounded-full"></div>
+            </span>
+            <br />of Development
+          </h1>
+          
+          <p class="text-xl text-gray-600 max-w-2xl leading-relaxed">
+            Join the largest community of developers in the Middle East and North Africa. 
+            Connect, learn, and build amazing projects together.
+          </p>
+        </div>
 
-            <!-- Technology badges -->
-            <div class="mt-10 flex flex-wrap justify-start gap-2 animate-fadeInUp"
-              :style="{ animationDelay: '1200ms' }">
-              <Badge v-for="(tech, index) in ['Text Analysis', 'Computer Vision', 'NLP', 'Active Learning', 'REST API']"
-                :key="index" variant="secondary" class="bg-card/40 backdrop-blur-sm">
-                {{ tech }}
-              </Badge>
+        <!-- CTA Buttons -->
+        <div class="fade-in-delay flex flex-col sm:flex-row gap-4">
+          <Button size="lg" class="glow-button bg-gradient-to-r from-green-600 to-black-600  text-white px-8 py-4 text-lg font-medium shadow-lg hover:shadow-xl transition-all duration-300">
+            <Link :href="route('register')" class="flex items-center gap-2">
+              Join the Community
+              <ChevronRight class="h-5 w-5" />
+            </Link>
+          </Button>
+          
+          <Button variant="outline" size="lg" class="px-8 py-4 text-lg font-medium border-2 hover:bg-gray-50 transition-all duration-300">
+            <a href="#features" class="flex items-center gap-2">
+              Explore Features
+              <Target class="h-5 w-5" />
+            </a>
+          </Button>
+        </div>
+
+        <!-- Stats -->
+        <div class="fade-in-delay pt-8">
+          <div class="grid grid-cols-3 gap-8">
+            <div class="text-center">
+              <div class="text-3xl font-bold text-gray-900">10K+</div>
+              <div class="text-sm text-gray-600 font-medium">Developers</div>
+            </div>
+            <div class="text-center">
+              <div class="text-3xl font-bold text-gray-900">50+</div>
+              <div class="text-sm text-gray-600 font-medium">Countries</div>
+            </div>
+            <div class="text-center">
+              <div class="text-3xl font-bold text-gray-900">1M+</div>
+              <div class="text-sm text-gray-600 font-medium">Connections</div>
             </div>
           </div>
         </div>
-      </section>
+      </div>
+
+      <!-- Right Visual - MENA DEVS Text -->
+      <div class="relative flex items-center justify-center">
+        <div class="fade-in-delay text-center">
+          <!-- Large MENA DEVS Text -->
+          <div class="relative">
+            <!-- Background glow effect -->
+            <div class="absolute inset-0 blur-3xl opacity-30 scale-110"></div>
+            
+            <!-- Main text -->
+            <div class="relative z-10 space-y-4">
+              <div class="text-8xl lg:text-9xl xl:text-[12rem] font-black tracking-tighter">
+                <div class=" bg-clip-text text-green-500 leading-none">
+                  MENA
+                </div>
+              </div>
+              <div class="text-8xl lg:text-9xl xl:text-[12rem] font-black tracking-tighter -mt-4">
+                <div class=" bg-clip-text  leading-none">
+                  DEVS
+                </div>
+              </div>
+            </div>
+            
+            <!-- Decorative elements -->
+            <div class="absolute -top-8 -right-8 w-4 h-4 bg-green-500 rounded-full animate-ping opacity-75"></div>
+            <div class="absolute -bottom-8 -left-8 w-3 h-3 bg-green-500 rounded-full animate-ping opacity-50"></div>
+            <div class="absolute top-1/2 -right-12 w-2 h-2 bg-cyan-500 rounded-full animate-pulse"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
 
       <!-- Features Section -->
       <section id="features" class="bg-muted/40 py-20">
@@ -609,5 +668,57 @@ onMounted(() => {
   50% {
     opacity: .5;
   }
+}
+
+
+.floating-element {
+  animation: float 6s ease-in-out infinite;
+}
+
+.floating-element:nth-child(2) {
+  animation-delay: 2s;
+}
+
+.floating-element:nth-child(3) {
+  animation-delay: 4s;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-20px); }
+}
+
+.fade-in {
+  animation: fadeIn 0.8s ease-out forwards;
+}
+
+.fade-in-delay {
+  animation: fadeIn 0.8s ease-out 0.3s forwards;
+  opacity: 0;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(30px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.glow-button {
+  position: relative;
+  overflow: hidden;
+}
+
+.glow-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+  transition: left 0.5s;
+}
+
+.glow-button:hover::before {
+  left: 100%;
 }
 </style>
