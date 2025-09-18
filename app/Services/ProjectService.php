@@ -574,11 +574,17 @@ class ProjectService
      */
     public function restoreProject(Project $project): void
     {
-        // Check if project has dimensions before restoring to active
-        if (!$project->annotationDimensions()->exists()) {
-            throw new \Exception('Cannot restore project to active status without annotation dimensions. Please add dimensions first.');
+        // Check if project has proper configuration before restoring to active
+        if ($project->project_type === 'annotation') {
+            if (!$project->annotationDimensions()->exists()) {
+                throw new \Exception('Cannot restore annotation project to active status without annotation dimensions. Please add dimensions first.');
+            }
+        } elseif ($project->project_type === 'segmentation') {
+            if (!$project->segmentationLabels()->exists()) {
+                throw new \Exception('Cannot restore segmentation project to active status without segmentation labels. Please add labels first.');
+            }
         }
-
+    
         $this->projectRepository->update($project->id, ['status' => 'active']);
     }
     /**

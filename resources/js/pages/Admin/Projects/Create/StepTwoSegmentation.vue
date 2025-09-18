@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Checkbox } from '@/components/ui/checkbox';
 import { type BreadcrumbItem } from '@/types';
 import { Head, useForm, Link } from '@inertiajs/vue3';
-import { ref, computed, watch } from 'vue';
+import { ref, computed } from 'vue';
 import { 
   ArrowLeft, 
   ArrowRight, 
@@ -104,7 +104,7 @@ const isNewLabelValid = computed(() => {
   const colorValid = newLabel.value.color.match(/^#[0-9A-Fa-f]{6}$/);
   const nameNotDuplicate = !isNameDuplicate(newLabel.value.name.trim());
   
-  return nameValid && colorValid && nameNotDuplicate;
+  return !!(nameValid && colorValid && nameNotDuplicate);
 });
 
 // Check if label name is duplicate
@@ -126,10 +126,16 @@ const isNameDuplicate = (name: string) => {
   return false;
 };
 
-// Methods
+// Selection helpers
+const isLabelSelected = (labelId: number) => {
+  return form.selectedLabels.some(l => l.id === labelId);
+};
+
 const toggleLabel = (label: SegmentationLabel, checked: boolean) => {
   if (checked) {
-    form.selectedLabels.push(label);
+    if (!isLabelSelected(label.id)) {
+      form.selectedLabels.push(label);
+    }
   } else {
     const index = form.selectedLabels.findIndex(l => l.id === label.id);
     if (index > -1) {
@@ -138,8 +144,10 @@ const toggleLabel = (label: SegmentationLabel, checked: boolean) => {
   }
 };
 
-const isLabelSelected = (labelId: number) => {
-  return form.selectedLabels.some(l => l.id === labelId);
+// click on row toggles too (fallback if checkbox event is quirky)
+const onRowToggle = (label: SegmentationLabel) => {
+  const next = !isLabelSelected(label.id);
+  toggleLabel(label, next);
 };
 
 const removeSelectedLabel = (labelId: number) => {
@@ -195,11 +203,20 @@ const closeCreateLabelModal = () => {
   };
 };
 
-// Submit step 2
+// Submit step 2 (transform payload to match backend validation)
 const submitStepTwo = () => {
-  if (isFormValid.value) {
-    form.post(route('admin.projects.store-step-two', props.project.id));
-  }
+  if (!isFormValid.value || form.processing) return;
+
+  form
+    .transform(data => ({
+      selectedLabels: data.selectedLabels.map((l: SegmentationLabel) => ({ id: l.id })),
+      newLabels: data.newLabels.map((l: any) => ({
+        name: l.name,
+        color: l.color,
+        description: l.description
+      }))
+    }))
+    .post(route('admin.projects.store-step-two', props.project.id));
 };
 
 // Go back to step 1
@@ -362,9 +379,9 @@ const filteredSuggestions = computed(() => {
 
             <!-- Quick Add Suggestions -->
             <div v-if="filteredSuggestions.length > 0" class="mb-4">
-            <p class="text-sm font-medium text-muted-foreground mb-2">
-              {{ searchQuery ? 'Matching suggestions:' : 'Quick Add:' }}
-            </p>
+              <p class="text-sm font-medium text-muted-foreground mb-2">
+                {{ searchQuery ? 'Matching suggestions:' : 'Quick Add:' }}
+              </p>
               <div class="flex flex-wrap gap-2">
                 <Button 
                   v-for="suggestion in filteredSuggestions.slice(0, 3)" 
@@ -386,11 +403,17 @@ const filteredSuggestions = computed(() => {
               <div 
                 v-for="label in filteredAvailableLabels" 
                 :key="label.id"
-                class="flex items-center space-x-3 p-3 border rounded-lg hover:bg-muted/50 transition-colors"
+                class="flex items-center space-x-3 p-3 border rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
+                @click="onRowToggle(label)"
               >
+                <!-- Controlled checkbox: support both modelValue and checked APIs -->
                 <Checkbox
+                  :modelValue="isLabelSelected(label.id)"
                   :checked="isLabelSelected(label.id)"
-                  @update:checked="(checked) => toggleLabel(label, checked)"
+                  @update:modelValue="(val:any) => toggleLabel(label, !!val)"
+                  @update:checked="(val:any) => toggleLabel(label, !!val)"
+                  @change.stop="(e:any) => toggleLabel(label, !!e?.target?.checked)"
+                  @click.stop
                 />
                 <div 
                   class="w-4 h-4 rounded-full border-2 border-white shadow-sm flex-shrink-0"

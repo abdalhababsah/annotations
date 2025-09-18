@@ -29,10 +29,27 @@ class AuthenticatedSessionController extends Controller
      */
     public function store(LoginRequest $request): RedirectResponse
     {
+        // Authenticate the user
         $request->authenticate();
 
+        // Check if the user is active
+        $user = Auth::user();
+        if (!$user->is_active) {
+            // Log the user out if they are not active
+            Auth::guard('web')->logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+
+            // Redirect back with an error message
+            return back()->withErrors([
+                'email' => 'Your account is waiting for activation. Please contact the administrator.',
+            ]);
+        }
+
+        // Regenerate session for active users
         $request->session()->regenerate();
 
+        // Redirect to intended route or dashboard
         return redirect()->intended(route('dashboard', absolute: false));
     }
 

@@ -15,6 +15,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
+use Illuminate\Support\Facades\DB;
 
 
 class ProjectController extends Controller
@@ -265,23 +266,23 @@ class ProjectController extends Controller
             'selectedLabels.*.id.required_with' => 'Selected label ID is required.',
             'newLabels.*.name.required_with' => 'New label name is required.',
         ]);
-    
+
         // Custom validation: at least one of selectedLabels or newLabels must have items
         $selectedCount = count($validated['selectedLabels'] ?? []);
         $newCount = count($validated['newLabels'] ?? []);
-        
+
         if ($selectedCount === 0 && $newCount === 0) {
             return back()->withErrors([
                 'selectedLabels' => 'At least one label must be selected or created.'
             ]);
         }
-    
+
         try {
             $this->projectService->saveProjectSegmentationLabels($project, $validated);
-    
+
             return redirect()->route('admin.projects.create.step-three', $project->id)
                 ->with('success', 'Segmentation labels configured successfully! Now review and finalize your project.');
-    
+
         } catch (\Exception $e) {
             \Log::error('Failed to save project segmentation labels: ' . $e->getMessage());
             return back()->withErrors(['error' => 'Failed to save labels. Please try again.']);
@@ -345,57 +346,7 @@ class ProjectController extends Controller
         }
     }
 
-    /**
-     * Show step 3 of project creation (Review & Finalize)
-     */
-    public function createStepThree(int $projectId): Response
-    {
-        $project = $this->projectRepository->findOrFail($projectId);
-        $user = auth()->user();
 
-        if (!$this->canEditProject($project, $user)) {
-            abort(403, 'You do not have permission to edit this project.');
-        }
-
-        $dimensions = $project->annotationDimensions()->with('dimensionValues')->orderBy('display_order')->get();
-        $statistics = $this->projectRepository->getProjectStatistics($project);
-
-        return Inertia::render('Admin/Projects/Create/StepThree', [
-            'project' => [
-                'id' => $project->id,
-                'name' => $project->name,
-                'description' => $project->description,
-                'status' => $project->status,
-                'task_time_minutes' => $project->task_time_minutes,
-                'review_time_minutes' => $project->review_time_minutes,
-                'annotation_guidelines' => $project->annotation_guidelines,
-                'deadline' => $project->deadline?->format('Y-m-d'),
-                'owner' => [
-                    'id' => $project->owner->id,
-                    'name' => $project->owner->full_name,
-                    'email' => $project->owner->email,
-                ],
-                'created_at' => $project->created_at->format('Y-m-d H:i'),
-            ],
-            'dimensions' => $dimensions->map(fn($dimension) => [
-                'id' => $dimension->id,
-                'name' => $dimension->name,
-                'description' => $dimension->description,
-                'dimension_type' => $dimension->dimension_type,
-                'scale_min' => $dimension->scale_min,
-                'scale_max' => $dimension->scale_max,
-                'is_required' => $dimension->is_required,
-                'values' => $dimension->dimensionValues->map(fn($value) => [
-                    'id' => $value->id,
-                    'value' => $value->value,
-                    'label' => $value->label,
-                ]),
-            ]),
-            'statistics' => $statistics,
-            'currentStep' => 3,
-            'totalSteps' => 3,
-        ]);
-    }
 
     /**
      * Finalize project creation (Step 3)
@@ -423,6 +374,86 @@ class ProjectController extends Controller
     /**
      * Display the specified project
      */
+    // ProjectController.php
+
+    public function createStepThree(int $projectId): Response
+    {
+        $project = $this->projectRepository->findOrFail($projectId);
+        $user = auth()->user();
+
+        if (!$this->canEditProject($project, $user)) {
+            abort(403, 'You do not have permission to edit this project.');
+        }
+
+        $statistics = $this->projectRepository->getProjectStatistics($project);
+
+        // 🔁 Always include project_type in the returned project payload
+        $projectPayload = [
+            'id' => $project->id,
+            'name' => $project->name,
+            'description' => $project->description,
+            'status' => $project->status,
+            'project_type' => $project->project_type, // <-- IMPORTANT
+            'task_time_minutes' => $project->task_time_minutes,
+            'review_time_minutes' => $project->review_time_minutes,
+            'annotation_guidelines' => $project->annotation_guidelines,
+            'deadline' => $project->deadline?->format('Y-m-d'),
+            'owner' => [
+                'id' => $project->owner->id,
+                'name' => $project->owner->full_name,
+                'email' => $project->owner->email,
+            ],
+            'created_at' => $project->created_at->format('Y-m-d H:i'),
+            'allow_custom_labels' => $project->allow_custom_labels,
+        ];
+
+        if ($project->project_type === 'segmentation') {
+            // ✅ Step 3 for segmentation returns segmentationLabels
+            $labels = $project->segmentationLabels()
+                ->orderBy('project_segmentation_labels.display_order') // if pivot has order
+                ->get();
+
+            return Inertia::render('Admin/Projects/Create/StepThree', [
+                'project' => $projectPayload,
+                'segmentationLabels' => $labels->map(fn($label) => [
+                    'id' => $label->id,
+                    'name' => $label->name,
+                    'color' => $label->color,
+                    'description' => $label->description,
+                ]),
+                'statistics' => $statistics,
+                'currentStep' => 3,
+                'totalSteps' => 3,
+            ]);
+        }
+
+        // ✅ Step 3 for annotation returns dimensions
+        $dimensions = $project->annotationDimensions()
+            ->with('dimensionValues')
+            ->orderBy('display_order')
+            ->get();
+
+        return Inertia::render('Admin/Projects/Create/StepThree', [
+            'project' => $projectPayload,
+            'dimensions' => $dimensions->map(fn($dimension) => [
+                'id' => $dimension->id,
+                'name' => $dimension->name,
+                'description' => $dimension->description,
+                'dimension_type' => $dimension->dimension_type,
+                'scale_min' => $dimension->scale_min,
+                'scale_max' => $dimension->scale_max,
+                'is_required' => $dimension->is_required,
+                'values' => $dimension->dimensionValues->map(fn($value) => [
+                    'id' => $value->id,
+                    'value' => $value->value,
+                    'label' => $value->label,
+                ]),
+            ]),
+            'statistics' => $statistics,
+            'currentStep' => 3,
+            'totalSteps' => 3,
+        ]);
+    }
     public function show(int $id): Response|RedirectResponse
     {
         $project = $this->projectRepository->findOrFail($id);
@@ -432,33 +463,56 @@ class ProjectController extends Controller
             abort(403, 'You do not have permission to view this project.');
         }
 
-        $dimensions = $project->annotationDimensions()->with('dimensionValues')->orderBy('display_order')->get();
+        // Get enhanced statistics for charts and visualizations
+        $enhancedStats = $this->getEnhancedProjectStatistics($project);
+        
+        // Base payload comes from service
+        $projectData = $this->projectService->transformProjectForShow($project);
 
-        // Redirect to index with message if project is draft and has no dimensions
+        // Return data strictly based on project type
+        if ($project->project_type === 'segmentation') {
+            $labels = $project->segmentationLabels()
+                ->orderBy('project_segmentation_labels.display_order')
+                ->get();
+
+            // If draft & no labels, bounce back with a clear message
+            if ($project->status === 'draft' && $labels->count() === 0) {
+                return redirect()->route('admin.projects.index')
+                    ->with('warning', "Project '{$project->name}' is incomplete. Please configure segmentation labels to continue.");
+            }
+
+            return Inertia::render('Admin/Projects/Show', [
+                'project' => array_merge($projectData, [
+                    'project_type' => 'segmentation',
+                    'allow_custom_labels' => (bool) $project->allow_custom_labels,
+                ]),
+                'segmentationLabels' => $labels->map(fn ($label) => [
+                    'id' => $label->id,
+                    'name' => $label->name,
+                    'color' => $label->color,
+                    'description' => $label->description,
+                ]),
+                'enhancedStats' => $enhancedStats,
+            ]);
+        }
+
+        // Annotation project
+        $dimensions = $project->annotationDimensions()
+            ->with('dimensionValues')
+            ->orderBy('display_order')
+            ->get();
+
+        // If draft & no dimensions, bounce back with a clear message
         if ($project->status === 'draft' && $dimensions->count() === 0) {
             return redirect()->route('admin.projects.index')
                 ->with('warning', "Project '{$project->name}' is incomplete. Please configure annotation dimensions to continue.");
         }
 
-        $projectData = $this->projectService->transformProjectForShow($project);
-
         return Inertia::render('Admin/Projects/Show', [
             'project' => array_merge($projectData, [
-                'annotation_dimensions' => $dimensions->map(fn($dimension) => [
-                    'id' => $dimension->id,
-                    'name' => $dimension->name,
-                    'description' => $dimension->description,
-                    'dimension_type' => $dimension->dimension_type,
-                    'scale_min' => $dimension->scale_min,
-                    'scale_max' => $dimension->scale_max,
-                    'scale_labels' => null,
-                    'form_template' => null,
-                    'is_required' => $dimension->is_required,
-                    'display_order' => $dimension->display_order,
-                ]),
-                'form_labels' => [], // Empty for now
+                'project_type' => 'annotation',
             ]),
-            'dimensions' => $dimensions->map(fn($dimension) => [
+            'dimensions' => $dimensions->map(fn ($dimension) => [
                 'id' => $dimension->id,
                 'name' => $dimension->name,
                 'description' => $dimension->description,
@@ -467,15 +521,213 @@ class ProjectController extends Controller
                 'scale_max' => $dimension->scale_max,
                 'is_required' => $dimension->is_required,
                 'display_order' => $dimension->display_order,
-                'values' => $dimension->dimensionValues->map(fn($value) => [
+                'values' => $dimension->dimensionValues->map(fn ($value) => [
                     'id' => $value->id,
                     'value' => $value->value,
                     'label' => $value->label,
                     'display_order' => $value->display_order,
                 ]),
             ]),
+            'enhancedStats' => $enhancedStats,
         ]);
     }
+
+    /**
+     * Get enhanced project statistics for charts and visualizations
+     */
+    private function getEnhancedProjectStatistics(Project $project): array
+    {
+        // Task status distribution
+        $taskStatusStats = DB::table('tasks')
+            ->where('project_id', $project->id)
+            ->selectRaw('status, count(*) as count')
+            ->groupBy('status')
+            ->get()
+            ->pluck('count', 'status')
+            ->toArray();
+
+        // Daily task completion over last 30 days
+        $dailyCompletions = DB::table('tasks')
+            ->where('project_id', $project->id)
+            ->where('completed_at', '>=', now()->subDays(30))
+            ->whereNotNull('completed_at')
+            ->selectRaw('DATE(completed_at) as date, count(*) as count')
+            ->groupBy('date')
+            ->orderBy('date')
+            ->get();
+
+        // Fill missing dates with zero
+        $completionData = [];
+        for ($i = 29; $i >= 0; $i--) {
+            $date = now()->subDays($i)->format('Y-m-d');
+            $completionData[] = [
+                'date' => $date,
+                'count' => $dailyCompletions->firstWhere('date', $date)?->count ?? 0,
+            ];
+        }
+
+        // Member performance statistics
+        $memberPerformance = DB::table('project_members')
+            ->join('users', 'users.id', '=', 'project_members.user_id')
+            ->leftJoin('tasks', function($join) use ($project) {
+                $join->on('tasks.assigned_to', '=', 'project_members.user_id')
+                     ->where('tasks.project_id', '=', $project->id);
+            })
+            ->leftJoin('annotations', 'annotations.task_id', '=', 'tasks.id')
+            ->where('project_members.project_id', $project->id)
+            ->where('project_members.is_active', true)
+            ->selectRaw('
+                users.id,
+                CONCAT(COALESCE(users.first_name, ""), " ", COALESCE(users.last_name, "")) as name,
+                users.email,
+                project_members.role,
+                COUNT(CASE WHEN tasks.status = "completed" THEN 1 END) as completed_tasks,
+                COUNT(CASE WHEN tasks.status = "approved" THEN 1 END) as approved_tasks,
+                COUNT(CASE WHEN tasks.status IN ("assigned", "in_progress") THEN 1 END) as active_tasks,
+                AVG(CASE WHEN annotations.status IN ("submitted", "approved") AND annotations.total_time_spent IS NOT NULL THEN annotations.total_time_spent END) as avg_time_spent
+            ')
+            ->groupBy('users.id', 'users.first_name', 'users.last_name', 'users.email', 'project_members.role')
+            ->get()
+            ->toArray();
+
+        // Review statistics
+        $reviewStats = DB::table('reviews')
+            ->join('annotations', 'annotations.id', '=', 'reviews.annotation_id')
+            ->join('tasks', 'tasks.id', '=', 'annotations.task_id')
+            ->where('tasks.project_id', $project->id)
+            ->selectRaw('
+                reviews.action,
+                count(*) as count,
+                AVG(reviews.feedback_rating) as avg_rating,
+                AVG(reviews.review_time_spent) as avg_review_time
+            ')
+            ->groupBy('reviews.action')
+            ->get()
+            ->toArray();
+
+        // Audio file statistics
+        $audioStats = DB::table('audio_files')
+            ->where('project_id', $project->id)
+            ->selectRaw('
+                COUNT(*) as total_files,
+                SUM(file_size) as total_size,
+                SUM(duration) as total_duration,
+                AVG(duration) as avg_duration,
+                MIN(duration) as min_duration,
+                MAX(duration) as max_duration
+            ')
+            ->first();
+
+        // Batch progress
+        $batchProgress = DB::table('batches')
+            ->leftJoin('tasks', 'tasks.batch_id', '=', 'batches.id')
+            ->where('batches.project_id', $project->id)
+            ->selectRaw('
+                batches.id,
+                batches.name,
+                batches.status as batch_status,
+                COUNT(tasks.id) as total_tasks,
+                COUNT(CASE WHEN tasks.status = "completed" THEN 1 END) as completed_tasks,
+                COUNT(CASE WHEN tasks.status = "approved" THEN 1 END) as approved_tasks,
+                COUNT(CASE WHEN tasks.status IN ("assigned", "in_progress") THEN 1 END) as active_tasks
+            ')
+            ->groupBy('batches.id', 'batches.name', 'batches.status')
+            ->get()
+            ->map(function($batch) {
+                $completion = $batch->total_tasks > 0 
+                    ? round(($batch->completed_tasks + $batch->approved_tasks) / $batch->total_tasks * 100, 1)
+                    : 0;
+                return array_merge((array)$batch, ['completion_percentage' => $completion]);
+            })
+            ->toArray();
+
+        // Weekly activity heatmap (last 12 weeks)
+        $weeklyActivity = DB::table('tasks')
+            ->where('project_id', $project->id)
+            ->where('updated_at', '>=', now()->subWeeks(12))
+            ->selectRaw('
+                YEAR(updated_at) as year,
+                WEEK(updated_at) as week,
+                DAYOFWEEK(updated_at) as day_of_week,
+                count(*) as activity_count
+            ')
+            ->groupBy('year', 'week', 'day_of_week')
+            ->get()
+            ->toArray();
+
+        // Quality metrics
+        $qualityMetrics = [
+            'avg_review_rating' => collect($reviewStats)->avg('avg_rating') ?? 0,
+            'approval_rate' => $this->calculateApprovalRate($reviewStats),
+            'revision_rate' => $this->calculateRevisionRate($reviewStats),
+            'skip_rate' => $this->calculateSkipRate($project),
+        ];
+
+        return [
+            'taskStatusDistribution' => $taskStatusStats,
+            'dailyCompletions' => $completionData,
+            'memberPerformance' => $memberPerformance,
+            'reviewStats' => $reviewStats,
+            'audioStats' => $audioStats,
+            'batchProgress' => $batchProgress,
+            'weeklyActivity' => $weeklyActivity,
+            'qualityMetrics' => $qualityMetrics,
+            'summary' => [
+                'total_tasks' => array_sum($taskStatusStats),
+                'completion_rate' => $this->calculateCompletionRate($taskStatusStats),
+                'avg_tasks_per_day' => collect($completionData)->avg('count'),
+                'most_active_day' => collect($completionData)->sortByDesc('count')->first(),
+                'team_efficiency' => $this->calculateTeamEfficiency($memberPerformance),
+            ]
+        ];
+    }
+
+    private function calculateApprovalRate(array $reviewStats): float
+    {
+        $total = collect($reviewStats)->sum('count');
+        if ($total === 0) return 0;
+        
+        $approved = collect($reviewStats)->firstWhere('action', 'approved')?->count ?? 0;
+        return round(($approved / $total) * 100, 1);
+    }
+
+    private function calculateRevisionRate(array $reviewStats): float
+    {
+        $total = collect($reviewStats)->sum('count');
+        if ($total === 0) return 0;
+        
+        $rejected = collect($reviewStats)->firstWhere('action', 'rejected')?->count ?? 0;
+        return round(($rejected / $total) * 100, 1);
+    }
+
+    private function calculateSkipRate(Project $project): float
+    {
+        $totalTasks = $project->tasks()->count();
+        if ($totalTasks === 0) return 0;
+        
+        $skippedTasks = $project->skipActivities()->where('activity_type', 'task')->count();
+        return round(($skippedTasks / $totalTasks) * 100, 1);
+    }
+
+    private function calculateCompletionRate(array $taskStats): float
+    {
+        $total = array_sum($taskStats);
+        if ($total === 0) return 0;
+        
+        $completed = ($taskStats['completed'] ?? 0) + ($taskStats['approved'] ?? 0);
+        return round(($completed / $total) * 100, 1);
+    }
+
+    private function calculateTeamEfficiency(array $memberPerformance): float
+    {
+        if (empty($memberPerformance)) return 0;
+        
+        $totalCompleted = collect($memberPerformance)->sum('completed_tasks');
+        $totalMembers = count($memberPerformance);
+        
+        return $totalMembers > 0 ? round($totalCompleted / $totalMembers, 1) : 0;
+    }
+
 
     /**
      * Show the form for editing the specified project

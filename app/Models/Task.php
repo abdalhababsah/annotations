@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Task extends Model
 {
+
     use HasFactory;
 
     protected $fillable = [
@@ -22,7 +23,26 @@ class Task extends Model
         'started_at',
         'completed_at',
         'expires_at',
+    
     ];
+    const STATUS_PENDING    = 'pending';
+    const STATUS_CLAIMED    = 'claimed';
+    const STATUS_INPROGRESS = 'in_progress';
+    const STATUS_SUBMITTED  = 'submitted';
+    const STATUS_SKIPPED    = 'skipped';
+    const STATUS_EXPIRED    = 'expired';
+
+    public function scopeActiveClaimed($q) {
+        return $q->whereIn('status', [self::STATUS_CLAIMED, self::STATUS_INPROGRESS]);
+    }
+
+    public function isSubmitted(): bool { return $this->status === self::STATUS_SUBMITTED; }
+    public function isSkipped(): bool   { return $this->status === self::STATUS_SKIPPED; }
+    public function isExpired(): bool   { return $this->status === self::STATUS_EXPIRED; }
+
+    public function isClaimedByOther(?int $userId): bool {
+        return $this->claimed_by_id && $this->claimed_by_id !== $userId;
+    }
     //Schema::create('tasks', function (Blueprint $table) {
     //    $table->id();
     //    $table->foreignId('project_id')->constrained('projects')->onDelete('cascade');
@@ -141,10 +161,7 @@ class Task extends Model
     }
 
     // Helper methods
-    public function isExpired()
-    {
-        return $this->expires_at && $this->expires_at->isPast() && in_array($this->status, ['assigned', 'in_progress']);
-    }
+
 
     public function getRemainingTimeAttribute()
     {
@@ -203,9 +220,31 @@ class Task extends Model
     }
 
     // Handle expiration - resets task automatically
-    public function handleExpiration()
+    public function handleExpiration(): void
     {
         if ($this->isExpired()) {
+            // Create or update skip activity for the assigned user with "expired" reason
+            if ($this->assigned_to) {
+                $user = User::find($this->assigned_to);
+                if ($user) {
+                    SkipActivity::updateOrCreate(
+                        [
+                            'user_id' => $this->assigned_to,
+                            'project_id' => $this->project_id,
+                            'task_id' => $this->id,
+                            'activity_type' => 'task',
+                        ],
+                        [
+                            'annotation_id' => null,
+                            'skip_reason' => 'expired',
+                            'skip_description' => 'Task expired due to time limit',
+                            'skipped_at' => now(),
+                        ]
+                    );
+                }
+            }
+
+            // Reset task to pending (same as manual skip)
             $this->update([
                 'status' => 'pending',
                 'assigned_to' => null,
@@ -215,6 +254,7 @@ class Task extends Model
             ]);
         }
     }
+
 
     // Boot method to update batch statistics when task changes
     protected static function boot()

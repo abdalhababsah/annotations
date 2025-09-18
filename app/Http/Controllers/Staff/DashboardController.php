@@ -6,33 +6,37 @@ use App\Http\Controllers\Controller;
 use App\Models\Annotation;
 use App\Models\Project;
 use App\Models\Review;
-use App\Models\SkipActivity;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use App\Services\TaskService;
 
 class DashboardController extends Controller
 {
+    public function __construct(private TaskService $tasks) {}
+
     public function index(Request $request): Response
     {
         $user = $request->user();
 
-        // Active projects where the user is an active member
+        // Active projects where the user is an active member - include the missing fields
         $projects = Project::query()
+            ->select([
+                'id', 'name', 'status', 'project_type', 'description', 
+                'task_time_minutes', 'review_time_minutes', 'annotation_guidelines'
+            ])
             ->with([
-                'members' => fn($q) => $q->where('user_id', $user->id)->where('is_active', true),
+                'members' => fn ($q) => $q->where('user_id', $user->id)->where('is_active', true),
                 'batches:id,project_id,status,total_tasks,completed_tasks',
             ])
-            ->whereHas('members', fn($q) => $q->where('user_id', $user->id)->where('is_active', true))
+            ->whereHas('members', fn ($q) => $q->where('user_id', $user->id)->where('is_active', true))
             ->where('status', 'active')
             ->orderBy('name')
             ->get();
 
-        // Build project cards (full-width; no queue counts)
         $cards = $projects->map(function (Project $project) use ($user) {
             $membership = $project->members->first();
             $role = $membership?->role;
-
             $isAnnotator = $role === 'annotator';
             $isReviewer  = $role === 'reviewer';
 
@@ -40,74 +44,83 @@ class DashboardController extends Controller
                 fn ($b) => in_array($b->status, ['published', 'in_progress'], true)
             );
 
-            // ---------- Availability (no counts, just booleans) ----------
+            // CONTINUE buttons (per-project)
+            $continueAttempt = $isAnnotator
+                ? $this->tasks->firstActiveTaskForProject($project->id, $user->id)
+                : null;
 
-            // Attempt availability:
-            // - resume if user already has assigned/in_progress (not expired) in active batches
-            $resumeAttemptExists = $project->tasks()
-                ->whereHas('batch', fn($q) => $q->whereIn('status', ['published', 'in_progress']))
-                ->whereIn('status', ['assigned', 'in_progress'])
-                ->where('assigned_to', $user->id)
-                ->where(function ($q) {
-                    $q->whereNull('expires_at')->orWhere('expires_at', '>', now());
-                })
-                ->exists();
+            $continueReview = $isReviewer
+                ? $this->tasks->firstActiveReviewForProject($project->id, $user->id)
+                : null;
 
-            // - or at least one pending task the user hasn't skipped, in active batches
-            $skippedTaskIds = SkipActivity::query()
+            // Availability (new/next)
+            $resumeAttemptExists = !!$continueAttempt;
+
+            // Skips per user
+            $skippedIds = \App\Models\SkipActivity::query()
                 ->where('user_id', $user->id)
                 ->where('project_id', $project->id)
                 ->where('activity_type', 'task')
                 ->pluck('task_id');
 
             $pendingAvailableExists = $project->tasks()
-                ->whereHas('batch', fn($q) => $q->whereIn('status', ['published', 'in_progress']))
+                ->whereHas('batch', fn ($q) => $q->whereIn('status', ['published', 'in_progress']))
                 ->where('status', 'pending')
-                ->whereNotIn('id', $skippedTaskIds)
+                ->whereNotIn('id', $skippedIds)
                 ->exists();
 
-            $canAttempt = $hasActiveBatches && ($resumeAttemptExists || $pendingAvailableExists);
+            $canAttempt = $isAnnotator && $hasActiveBatches && ($resumeAttemptExists || $pendingAvailableExists);
 
-            // Review availability:
-            // - resume if user has an active review (not expired)
-            $resumeReviewExists = Review::query()
-                ->whereHas('annotation.task', fn($q) => $q->where('project_id', $project->id))
-                ->where('reviewer_id', $user->id)
-                ->whereNull('completed_at')
-                ->where(function ($q) {
-                    $q->whereNull('expires_at')->orWhere('expires_at', '>', now());
-                })
-                ->exists();
+            // Reviews
+            $resumeReviewExists = !!$continueReview;
 
-            // - or at least one submitted annotation from active batches
             $submittedExists = Annotation::query()
                 ->where('status', 'submitted')
                 ->whereHas('task', function ($q) use ($project) {
                     $q->where('project_id', $project->id)
-                      ->whereHas('batch', fn($b) => $b->whereIn('status', ['published', 'in_progress']));
+                      ->whereHas('batch', fn ($b) => $b->whereIn('status', ['published', 'in_progress']));
                 })
                 ->exists();
 
-            $canReview = $hasActiveBatches && ($resumeReviewExists || $submittedExists);
+            $canReview = $isReviewer && $hasActiveBatches && ($resumeReviewExists || $submittedExists);
 
             return [
                 'id' => $project->id,
                 'name' => $project->name,
+                'description' => $project->description,
                 'status' => $project->status,
+                'project_type' => $project->project_type,
+                'task_time_minutes' => $project->task_time_minutes,
+                'review_time_minutes' => $project->review_time_minutes,
+                'annotation_guidelines' => $project->annotation_guidelines,
                 'roles' => [
                     'annotator' => $isAnnotator,
                     'reviewer'  => $isReviewer,
                 ],
                 'has_active_batches' => $hasActiveBatches,
-                'can_attempt' => $isAnnotator ? $canAttempt : false,
-                'can_review'  => $isReviewer  ? $canReview  : false,
+                'can_attempt' => $canAttempt,
+                'can_review'  => $canReview,
+
+                // Continue info for UI to render a "Continue" state
+                'continue' => [
+                    'attempt' => $continueAttempt ? [
+                        'task_id'   => $continueAttempt->id,
+                        'project_id'=> $project->id,
+                        'route'     => route('staff.attempt.show', [$project->id, $continueAttempt->id], false),
+                    ] : null,
+                    'review' => $continueReview ? [
+                        'review_id' => $continueReview->id,
+                        'project_id'=> $project->id,
+                        'route'     => route('staff.review.show', [$project->id, $continueReview->id], false),
+                    ] : null,
+                ],
             ];
         })->values();
 
-        // -------------------- Aggregate Stats (cross-project) --------------------
-        $startDay  = now()->startOfDay();
-        $startWeek = now()->startOfWeek();
-        $startMonth= now()->startOfMonth();
+        // Aggregate stats
+        $startDay   = now()->startOfDay();
+        $startWeek  = now()->startOfWeek();
+        $startMonth = now()->startOfMonth();
 
         $annotatorProjectIds = $projects
             ->filter(fn ($p) => ($p->members->first()?->role) === 'annotator')
@@ -117,12 +130,11 @@ class DashboardController extends Controller
             ->filter(fn ($p) => ($p->members->first()?->role) === 'reviewer')
             ->pluck('id');
 
-        // Annotator stats
         $annotatorStats = null;
         if ($annotatorProjectIds->isNotEmpty()) {
             $baseAnn = Annotation::query()
                 ->where('annotator_id', $user->id)
-                ->whereHas('task', fn($q) => $q->whereIn('project_id', $annotatorProjectIds));
+                ->whereHas('task', fn ($q) => $q->whereIn('project_id', $annotatorProjectIds));
 
             $todayAttempted   = (clone $baseAnn)->where('started_at', '>=', $startDay)->count();
             $todaySubmitted   = (clone $baseAnn)->where('submitted_at', '>=', $startDay)->count();
@@ -145,12 +157,11 @@ class DashboardController extends Controller
             ];
         }
 
-        // Reviewer stats (approve-only path)
         $reviewerStats = null;
         if ($reviewerProjectIds->isNotEmpty()) {
             $baseRev = Review::query()
                 ->where('reviewer_id', $user->id)
-                ->whereHas('annotation.task', fn($q) => $q->whereIn('project_id', $reviewerProjectIds));
+                ->whereHas('annotation.task', fn ($q) => $q->whereIn('project_id', $reviewerProjectIds));
 
             $todayStarted       = (clone $baseRev)->where('started_at', '>=', $startDay)->count();
             $todayApproved      = (clone $baseRev)->where('action', 'approved')->where('completed_at', '>=', $startDay)->count();

@@ -6,6 +6,7 @@ use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\ProjectController;
 use App\Http\Controllers\Admin\ProjectMembersController;
 use App\Http\Controllers\Admin\TaskController;
+use App\Http\Controllers\Admin\UserController;
 use Illuminate\Support\Facades\Route;
 // routes/web.php
 use App\Http\Controllers\Admin\ProjectTasksController;
@@ -15,17 +16,25 @@ use App\Http\Controllers\Admin\ProjectTasksController;
 // Admin Routes - System Admin Only
 Route::middleware(['auth', 'role:SystemAdmin'])->group(function () {
     Route::get('/admin/dashboard', [DashboardController::class, 'index'])->name('admin.dashboard');
+    Route::prefix('admin/users')->name('admin.users.')->group(function () {
+        Route::get('/', [UserController::class, 'index'])->name('index');
+        Route::post('/', [UserController::class, 'store'])->name('store');
+        Route::put('{user}', [UserController::class, 'update'])->name('update');
+        Route::post('{user}/toggle-active', [UserController::class, 'toggleActive'])->name('toggle-active');
+        Route::post('{user}/toggle-verified', [UserController::class, 'toggleVerified'])->name('toggle-verified');
+        Route::post('{user}/send-password-reset', [UserController::class, 'sendPasswordReset'])->name('send-password-reset');
+    });
 });
 
 // Project Routes - Accessible by System Admins and Project Owners
-Route::middleware(['auth','role:SystemAdmin'])->prefix('admin')->name('admin.')->group(function () {
+Route::middleware(['auth', 'role:SystemAdmin'])->prefix('admin')->name('admin.')->group(function () {
 
     // =====================================================
     // PROJECT ROUTES
     // =====================================================
     Route::prefix('projects')->name('projects.')->group(function () {
 
-        
+
         // ===== MAIN PROJECT CRUD ROUTES =====
         Route::get('/', [ProjectController::class, 'index'])->name('index');
         Route::get('/create', [ProjectController::class, 'create'])->name('create');
@@ -95,7 +104,7 @@ Route::middleware(['auth','role:SystemAdmin'])->prefix('admin')->name('admin.')-
         Route::prefix('{project}/tasks')->name('tasks.')->group(function () {
             Route::get('/manage', [ProjectTasksController::class, 'index'])->name('manage');
             Route::get('/export', [ProjectTasksController::class, 'export'])->name('export');
-        
+
 
 
             Route::get('/', [TaskController::class, 'index'])->name('index');
@@ -105,7 +114,7 @@ Route::middleware(['auth','role:SystemAdmin'])->prefix('admin')->name('admin.')-
             Route::post('/bulk-assign', [TaskController::class, 'bulkAssign'])->name('bulk-assign');
 
 
-   
+
         });
 
         // Add this inside the projects prefix group, after the task routes

@@ -5,11 +5,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Checkbox } from '@/components/ui/checkbox';
 import { type BreadcrumbItem } from '@/types';
 import { Head, useForm, Link } from '@inertiajs/vue3';
 import { ref, computed, watch } from 'vue';
@@ -18,33 +18,41 @@ import {
   ArrowRight, 
   Plus, 
   Trash2, 
-  Tags, 
+  Settings, 
   CheckCircle2, 
   AlertCircle,
-  Palette,
-  Save,
-  Search
+  GripVertical,
+  Save
 } from 'lucide-vue-next';
 
-interface SegmentationLabel {
-  id: number;
+interface DimensionValue {
+  id?: number;
+  value: string;
+  label: string;
+  display_order: number;
+}
+
+interface AnnotationDimension {
+  id?: number;
   name: string;
-  color: string;
-  description?: string;
+  description: string;
+  dimension_type: 'categorical' | 'numeric_scale';
+  scale_min?: number;
+  scale_max?: number;
+  is_required: boolean;
+  display_order: number;
+  values: DimensionValue[];
 }
 
 interface Project {
   id: number;
   name: string;
   status: string;
-  project_type: string;
-  allow_custom_labels: boolean;
 }
 
 interface Props {
   project: Project;
-  availableLabels: SegmentationLabel[];
-  selectedLabels: SegmentationLabel[];
+  dimensions: AnnotationDimension[];
   currentStep: number;
   totalSteps: number;
 }
@@ -54,122 +62,154 @@ const props = defineProps<Props>();
 const breadcrumbs: BreadcrumbItem[] = [
   { title: 'Projects', href: '/admin/projects' },
   { title: 'Create Project', href: '/admin/projects/create' },
-  { title: 'Configure Labels', href: `#` },
+  { title: 'Configure Dimensions', href: `#` },
 ];
 
-// Form for labels
+// Form for dimensions
 const form = useForm({
-  selectedLabels: [...props.selectedLabels],
-  newLabels: [] as { name: string; color: string; description: string; tempId: string }[]
+  dimensions: props.dimensions.length > 0 ? [...props.dimensions] : [
+    {
+      name: 'Gender',
+      description: 'Identify the speaker\'s gender',
+      dimension_type: 'categorical' as const,
+      is_required: true,
+      display_order: 0,
+      values: [
+        { value: 'male', label: 'Male', display_order: 0 },
+        { value: 'female', label: 'Female', display_order: 1 },
+        { value: 'other', label: 'Other', display_order: 2 },
+      ]
+    }
+  ] as AnnotationDimension[]
 });
 
-// State
-const showCreateLabelModal = ref(false);
-const searchQuery = ref('');
-const newLabel = ref({
-  name: '',
-  color: '#3B82F6',
-  description: ''
-});
-
-// Available color options
-const colorOptions = [
-  '#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6',
-  '#EC4899', '#06B6D4', '#84CC16', '#F97316', '#6366F1'
-];
-
-// Filtered available labels based on search
-const filteredAvailableLabels = computed(() => {
-  const query = searchQuery.value.toLowerCase();
-  const selectedIds = form.selectedLabels.map(l => l.id);
-  
-  return props.availableLabels
-    .filter(label => !selectedIds.includes(label.id))
-    .filter(label => 
-      query === '' || 
-      label.name.toLowerCase().includes(query) ||
-      (label.description && label.description.toLowerCase().includes(query))
-    );
-});
+// Modal state for editing dimensions
+const showDimensionModal = ref(false);
+const editingDimension = ref<AnnotationDimension | null>(null);
+const editingIndex = ref(-1);
 
 // Validation
 const isFormValid = computed(() => {
-  return (form.selectedLabels.length + form.newLabels.length) >= 1;
+  return form.dimensions.length > 0 && 
+         form.dimensions.every(dim => 
+           dim.name.trim().length > 0 && 
+           (dim.dimension_type === 'numeric_scale' || 
+            (dim.dimension_type === 'categorical' && dim.values.length > 0))
+         );
 });
 
-const isNewLabelValid = computed(() => {
-  return newLabel.value.name.trim().length > 0 && 
-         newLabel.value.color.match(/^#[0-9A-Fa-f]{6}$/);
-});
+// Add new dimension
+const addNewDimension = () => {
+  editingDimension.value = {
+    name: '',
+    description: '',
+    dimension_type: 'categorical',
+    is_required: true,
+    display_order: form.dimensions.length,
+    values: [
+      { value: '', label: '', display_order: 0 }
+    ]
+  };
+  editingIndex.value = -1;
+  showDimensionModal.value = true;
+};
 
-// Methods
-const toggleLabel = (label: SegmentationLabel, checked: boolean) => {
-  if (checked) {
-    form.selectedLabels.push(label);
-  } else {
-    const index = form.selectedLabels.findIndex(l => l.id === label.id);
-    if (index > -1) {
-      form.selectedLabels.splice(index, 1);
+// Edit existing dimension
+const editDimension = (dimension: AnnotationDimension, index: number) => {
+  editingDimension.value = JSON.parse(JSON.stringify(dimension)); // Deep copy
+  editingIndex.value = index;
+  showDimensionModal.value = true;
+};
+
+// Delete dimension
+const deleteDimension = (index: number) => {
+  form.dimensions.splice(index, 1);
+  // Reorder display_order
+  form.dimensions.forEach((dim, idx) => {
+    dim.display_order = idx;
+  });
+};
+
+// Save dimension (add or update)
+const saveDimension = () => {
+  if (!editingDimension.value) return;
+
+  // Validate dimension
+  if (!editingDimension.value.name.trim()) {
+    alert('Please enter a dimension name');
+    return;
+  }
+
+  if (editingDimension.value.dimension_type === 'categorical') {
+    if (editingDimension.value.values.length === 0 || 
+        !editingDimension.value.values.some(v => v.value.trim())) {
+      alert('Please add at least one value for categorical dimension');
+      return;
     }
   }
-};
 
-const isLabelSelected = (labelId: number) => {
-  return form.selectedLabels.some(l => l.id === labelId);
-};
-
-const removeSelectedLabel = (labelId: number) => {
-  const index = form.selectedLabels.findIndex(l => l.id === labelId);
-  if (index > -1) {
-    form.selectedLabels.splice(index, 1);
+  if (editingDimension.value.dimension_type === 'numeric_scale') {
+    if (!editingDimension.value.scale_min || !editingDimension.value.scale_max ||
+        editingDimension.value.scale_min >= editingDimension.value.scale_max) {
+      alert('Please set valid scale range (min < max)');
+      return;
+    }
   }
+
+  if (editingIndex.value >= 0) {
+    // Update existing dimension
+    form.dimensions[editingIndex.value] = { ...editingDimension.value };
+  } else {
+    // Add new dimension
+    editingDimension.value.display_order = form.dimensions.length;
+    form.dimensions.push({ ...editingDimension.value });
+  }
+
+  closeDimensionModal();
 };
 
-const addNewLabel = () => {
-  if (isNewLabelValid.value) {
-    const tempId = Date.now().toString();
-    form.newLabels.push({
-      name: newLabel.value.name.trim(),
-      color: newLabel.value.color,
-      description: newLabel.value.description.trim(),
-      tempId
+// Close modal
+const closeDimensionModal = () => {
+  editingDimension.value = null;
+  editingIndex.value = -1;
+  showDimensionModal.value = false;
+};
+
+// Dimension value management
+const addDimensionValue = () => {
+  if (editingDimension.value && editingDimension.value.dimension_type === 'categorical') {
+    editingDimension.value.values.push({
+      value: '',
+      label: '',
+      display_order: editingDimension.value.values.length
     });
-    
-    // Reset form
-    newLabel.value = {
-      name: '',
-      color: '#3B82F6',
-      description: ''
-    };
-    
-    showCreateLabelModal.value = false;
   }
 };
 
-const removeNewLabel = (tempId: string) => {
-  const index = form.newLabels.findIndex(l => l.tempId === tempId);
-  if (index > -1) {
-    form.newLabels.splice(index, 1);
+const removeDimensionValue = (index: number) => {
+  if (editingDimension.value && editingDimension.value.values.length > 1) {
+    editingDimension.value.values.splice(index, 1);
+    // Reorder display_order
+    editingDimension.value.values.forEach((val, idx) => {
+      val.display_order = idx;
+    });
   }
 };
 
-const openCreateLabelModal = () => {
-  newLabel.value = {
-    name: '',
-    color: colorOptions[Math.floor(Math.random() * colorOptions.length)],
-    description: ''
-  };
-  showCreateLabelModal.value = true;
-};
-
-const closeCreateLabelModal = () => {
-  showCreateLabelModal.value = false;
-  newLabel.value = {
-    name: '',
-    color: '#3B82F6',
-    description: ''
-  };
-};
+// Watch for dimension type changes
+watch(() => editingDimension.value?.dimension_type, (newType) => {
+  if (editingDimension.value) {
+    if (newType === 'categorical' && editingDimension.value.values.length === 0) {
+      editingDimension.value.values = [
+        { value: '', label: '', display_order: 0 }
+      ];
+    } else if (newType === 'numeric_scale') {
+      editingDimension.value.scale_min = 1;
+      editingDimension.value.scale_max = 5;
+      editingDimension.value.values = [];
+    }
+  }
+});
 
 // Submit step 2
 const submitStepTwo = () => {
@@ -183,23 +223,19 @@ const goToPreviousStep = () => {
   window.location.href = route('admin.projects.edit', props.project.id);
 };
 
-// Generate random color
-const generateRandomColor = () => {
-  newLabel.value.color = colorOptions[Math.floor(Math.random() * colorOptions.length)];
-};
 </script>
 
 <template>
-  <Head title="Configure Segmentation Labels" />
+  <Head title="Configure Dimensions" />
 
   <AppLayout :breadcrumbs="breadcrumbs">
     <div class="flex h-full flex-1 flex-col gap-6 rounded-xl p-6 overflow-x-auto">
       <!-- Header -->
       <div class="flex items-center justify-between">
         <div>
-          <h1 class="text-3xl font-bold tracking-tight">Configure Segmentation Labels</h1>
+          <h1 class="text-3xl font-bold tracking-tight">Configure Annotation Dimensions</h1>
           <p class="text-muted-foreground">
-            Step {{ currentStep }} of {{ totalSteps }}: Select and create labels for audio segmentation
+            Step {{ currentStep }} of {{ totalSteps }}: Define what annotators will evaluate
           </p>
         </div>
         <Link :href="route('admin.projects.index')">
@@ -229,7 +265,7 @@ const generateRandomColor = () => {
               <span v-if="!isFormValid">2</span>
               <CheckCircle2 v-else class="w-4 h-4" />
             </div>
-            <span class="ml-2 text-sm font-medium text-blue-600">Labels</span>
+            <span class="ml-2 text-sm font-medium text-blue-600">Dimensions</span>
           </div>
           
           <Separator class="flex-1" />
@@ -250,293 +286,262 @@ const generateRandomColor = () => {
           <div class="flex items-center gap-4">
             <div>
               <h3 class="font-medium">{{ project.name }}</h3>
-              <p class="text-sm text-muted-foreground">Audio Segmentation Project</p>
+              <p class="text-sm text-muted-foreground">Audio Annotation Project</p>
             </div>
             <Badge variant="outline">{{ project.status }}</Badge>
-            <Badge v-if="project.allow_custom_labels" variant="secondary">Custom Labels Enabled</Badge>
           </div>
         </CardContent>
       </Card>
 
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <!-- Available Labels -->
-        <Card>
-          <CardHeader>
-            <div class="flex items-center justify-between">
-              <CardTitle class="flex items-center gap-2">
-                <Tags class="h-5 w-5" />
-                Available Labels
-              </CardTitle>
-              <Button @click="openCreateLabelModal" size="sm">
-                <Plus class="mr-2 h-4 w-4" />
-                Create Label
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <!-- Search -->
-            <div class="relative mb-4">
-              <Search class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                v-model="searchQuery"
-                placeholder="Search labels..."
-                class="pl-10"
-              />
-            </div>
-
-            <!-- Labels List -->
-            <div class="space-y-2 max-h-96 overflow-y-auto">
-              <div 
-                v-for="label in filteredAvailableLabels" 
-                :key="label.id"
-                class="flex items-center space-x-3 p-3 border rounded-lg hover:bg-muted/50 transition-colors"
-              >
-                <Checkbox
-                  :checked="isLabelSelected(label.id)"
-                  @update:checked="(checked) => toggleLabel(label, checked)"
-                />
-                <div 
-                  class="w-4 h-4 rounded-full border-2 border-white shadow-sm"
-                  :style="{ backgroundColor: label.color }"
-                />
-                <div class="flex-1 min-w-0">
-                  <p class="font-medium text-sm">{{ label.name }}</p>
-                  <p v-if="label.description" class="text-xs text-muted-foreground truncate">
-                    {{ label.description }}
-                  </p>
-                </div>
-              </div>
-
-              <!-- Empty State -->
-              <div v-if="filteredAvailableLabels.length === 0" class="text-center py-8 text-muted-foreground">
-                <Tags class="mx-auto h-8 w-8 mb-2" />
-                <p class="text-sm">{{ searchQuery ? 'No labels found' : 'No available labels' }}</p>
-                <p class="text-xs">{{ searchQuery ? 'Try a different search term' : 'Create a new label to get started' }}</p>
-              </div>
-            </div>
-
-            <!-- Info Alert -->
-            <Alert class="mt-4">
-              <AlertCircle class="h-4 w-4" />
-              <AlertDescription>
-                Select labels that annotators will use to segment audio files. You can also create new labels specific to your project.
-              </AlertDescription>
-            </Alert>
-          </CardContent>
-        </Card>
-
-        <!-- Selected Labels -->
-        <Card>
-          <CardHeader>
+      <!-- Dimensions Configuration -->
+      <Card>
+        <CardHeader>
+          <div class="flex items-center justify-between">
             <CardTitle class="flex items-center gap-2">
-              <CheckCircle2 class="h-5 w-5" />
-              Selected Labels
-              <Badge variant="secondary">{{ form.selectedLabels.length + form.newLabels.length }}</Badge>
+              <Settings class="h-5 w-5" />
+              Annotation Dimensions
             </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <!-- Selected Existing Labels -->
-            <div v-if="form.selectedLabels.length > 0" class="space-y-2 mb-4">
-              <div 
-                v-for="label in form.selectedLabels" 
-                :key="label.id"
-                class="flex items-center justify-between p-3 border rounded-lg bg-muted/30"
-              >
-                <div class="flex items-center gap-3">
-                  <div 
-                    class="w-4 h-4 rounded-full border-2 border-white shadow-sm"
-                    :style="{ backgroundColor: label.color }"
-                  />
-                  <div>
-                    <p class="font-medium text-sm">{{ label.name }}</p>
-                    <p v-if="label.description" class="text-xs text-muted-foreground">
-                      {{ label.description }}
-                    </p>
+            <Button @click="addNewDimension" size="sm">
+              <Plus class="mr-2 h-4 w-4" />
+              Add Dimension
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <Alert class="mb-6">
+            <AlertCircle class="h-4 w-4" />
+            <AlertDescription>
+              Define the aspects that annotators will evaluate for each audio file. 
+              You can create categorical dimensions (e.g., Gender: Male/Female/Other) 
+              or numeric scales (e.g., Quality: 1-5 rating).
+            </AlertDescription>
+          </Alert>
+
+          <!-- Existing Dimensions -->
+          <div v-if="form.dimensions.length > 0" class="space-y-4">
+            <div 
+              v-for="(dimension, index) in form.dimensions" 
+              :key="index"
+              class="border rounded-lg p-4 hover:bg-gray-50 transition-colors"
+            >
+              <div class="flex items-start justify-between">
+                <div class="flex-1">
+                  <div class="flex items-center gap-2 mb-2">
+                    <GripVertical class="h-4 w-4 text-gray-400 cursor-move" />
+                    <h3 class="font-medium">{{ dimension.name }}</h3>
+                    <Badge variant="outline">
+                      {{ dimension.dimension_type === 'categorical' ? 'Categorical' : 'Numeric Scale' }}
+                    </Badge>
+                    <Badge v-if="dimension.is_required" variant="secondary">Required</Badge>
+                  </div>
+                  
+                  <p v-if="dimension.description" class="text-sm text-muted-foreground mb-2">
+                    {{ dimension.description }}
+                  </p>
+                  
+                  <!-- Categorical Values -->
+                  <div v-if="dimension.dimension_type === 'categorical'" class="flex flex-wrap gap-2">
+                    <Badge 
+                      v-for="value in dimension.values" 
+                      :key="value.display_order" 
+                      variant="outline"
+                      class="text-xs"
+                    >
+                      {{ value.label || value.value }}
+                    </Badge>
+                  </div>
+                  
+                  <!-- Numeric Scale -->
+                  <div v-else class="text-sm text-muted-foreground">
+                    Scale: {{ dimension.scale_min }} to {{ dimension.scale_max }}
                   </div>
                 </div>
-                <Button 
-                  @click="removeSelectedLabel(label.id)"
-                  variant="ghost"
-                  size="sm"
-                >
-                  <Trash2 class="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-
-            <!-- New Labels -->
-            <div v-if="form.newLabels.length > 0" class="space-y-2 mb-4">
-              <div class="text-xs font-medium text-muted-foreground mb-2">New Labels</div>
-              <div 
-                v-for="label in form.newLabels" 
-                :key="label.tempId"
-                class="flex items-center justify-between p-3 border rounded-lg bg-blue-50 border-blue-200"
-              >
-                <div class="flex items-center gap-3">
-                  <div 
-                    class="w-4 h-4 rounded-full border-2 border-white shadow-sm"
-                    :style="{ backgroundColor: label.color }"
-                  />
-                  <div>
-                    <p class="font-medium text-sm">{{ label.name }}</p>
-                    <p v-if="label.description" class="text-xs text-muted-foreground">
-                      {{ label.description }}
-                    </p>
-                    <Badge variant="outline" class="text-xs">New</Badge>
-                  </div>
+                
+                <div class="flex items-center gap-2">
+                  <Button @click="editDimension(dimension, index)" variant="outline" size="sm">
+                    Edit
+                  </Button>
+                  <Button @click="deleteDimension(index)" variant="destructive" size="sm">
+                    <Trash2 class="h-4 w-4" />
+                  </Button>
                 </div>
-                <Button 
-                  @click="removeNewLabel(label.tempId)"
-                  variant="ghost"
-                  size="sm"
-                >
-                  <Trash2 class="h-4 w-4" />
-                </Button>
               </div>
             </div>
-
-            <!-- Empty State -->
-            <div v-if="form.selectedLabels.length === 0 && form.newLabels.length === 0" 
-                 class="text-center py-8 border-2 border-dashed border-gray-300 rounded-lg">
-              <Tags class="mx-auto h-8 w-8 text-gray-400 mb-4" />
-              <h3 class="text-lg font-medium text-gray-900 mb-2">No labels selected</h3>
-              <p class="text-gray-600 mb-4">
-                Select labels from the available list or create new ones
-              </p>
-            </div>
-
-            <!-- Custom Labels Info -->
-            <Alert v-if="project.allow_custom_labels" class="mt-4 border-blue-200 bg-blue-50">
-              <AlertCircle class="h-4 w-4 text-blue-600" />
-              <AlertDescription class="text-blue-800">
-                <strong>Custom Labels Enabled:</strong> Annotators can create additional labels during segmentation tasks if needed.
-              </AlertDescription>
-            </Alert>
-
-            <!-- Validation Error -->
-            <Alert v-if="!isFormValid && (form.selectedLabels.length > 0 || form.newLabels.length > 0)" variant="destructive" class="mt-4">
-              <AlertCircle class="h-4 w-4" />
-              <AlertDescription>
-                Please select at least one label or create a new label for your segmentation project.
-              </AlertDescription>
-            </Alert>
-
-            <!-- Form Errors -->
-            <div v-if="Object.keys(form.errors).length > 0" class="mt-4 p-4 bg-red-50 border border-red-200 rounded-md">
-              <p class="text-sm text-red-600 font-medium mb-2">Please fix the following errors:</p>
-              <ul class="text-sm text-red-600 space-y-1">
-                <li v-for="(error, field) in form.errors" :key="field">
-                  • {{ error }}
-                </li>
-              </ul>
-            </div>
-
-            <!-- Navigation -->
-            <div class="flex items-center justify-between pt-6 border-t mt-6">
-              <Button @click="goToPreviousStep" variant="outline">
-                <ArrowLeft class="mr-2 h-4 w-4" />
-                Previous
-              </Button>
-              
-              <Button 
-                @click="submitStepTwo" 
-                :disabled="!isFormValid || form.processing"
-                class="flex items-center gap-2"
-              >
-                <span>{{ form.processing ? 'Saving...' : 'Next: Review Project' }}</span>
-                <ArrowRight class="h-4 w-4" />
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-
-    <!-- Create Label Modal -->
-    <Dialog :open="showCreateLabelModal" @update:open="showCreateLabelModal = $event">
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Create New Segmentation Label</DialogTitle>
-        </DialogHeader>
-        <div class="space-y-4">
-          <!-- Label Name -->
-          <div class="space-y-2">
-            <Label>Label Name *</Label>
-            <Input
-              v-model="newLabel.name"
-              placeholder="e.g., Speaker A, Music, Background Noise"
-              @keydown.enter.prevent="addNewLabel"
-            />
           </div>
 
-          <!-- Label Color -->
-          <div class="space-y-2">
-            <Label>Color</Label>
-            <div class="flex items-center gap-3">
-              <Input
-                v-model="newLabel.color"
-                type="color"
-                class="w-16 h-10 p-1 rounded border"
-              />
-              <Input
-                v-model="newLabel.color"
-                placeholder="#3B82F6"
-                class="flex-1 font-mono text-sm"
-              />
-              <Button @click="generateRandomColor" variant="outline" size="sm">
-                <Palette class="h-4 w-4" />
-              </Button>
-            </div>
+          <!-- Empty State -->
+          <div v-else class="text-center py-8 border-2 border-dashed border-gray-300 rounded-lg">
+            <Settings class="mx-auto h-8 w-8 text-gray-400 mb-4" />
+            <h3 class="text-lg font-medium text-gray-900 mb-2">No dimensions defined</h3>
+            <p class="text-gray-600 mb-4">
+              Add annotation dimensions to define what annotators will evaluate
+            </p>
+            <Button @click="addNewDimension">
+              <Plus class="mr-2 h-4 w-4" />
+              Add Your First Dimension
+            </Button>
+          </div>
+
+          <!-- Validation Error -->
+          <Alert v-if="!isFormValid && form.dimensions.length > 0" variant="destructive" class="mt-4">
+            <AlertCircle class="h-4 w-4" />
+            <AlertDescription>
+              Please ensure all dimensions have names and categorical dimensions have at least one value.
+            </AlertDescription>
+          </Alert>
+
+          <!-- Form Errors -->
+          <div v-if="Object.keys(form.errors).length > 0" class="mt-4 p-4 bg-red-50 border border-red-200 rounded-md">
+            <p class="text-sm text-red-600 font-medium mb-2">Please fix the following errors:</p>
+            <ul class="text-sm text-red-600 space-y-1">
+              <li v-for="(error, field) in form.errors" :key="field">
+                • {{ error }}
+              </li>
+            </ul>
+          </div>
+
+          <!-- Navigation -->
+          <div class="flex items-center justify-between pt-6 border-t mt-6">
+            <Button @click="goToPreviousStep" variant="outline">
+              <ArrowLeft class="mr-2 h-4 w-4" />
+              Previous
+            </Button>
             
-            <!-- Color Presets -->
-            <div class="flex gap-2 flex-wrap">
-              <button
-                v-for="color in colorOptions"
-                :key="color"
-                type="button"
-                class="w-8 h-8 rounded border-2 border-white shadow-sm hover:scale-110 transition-transform"
-                :style="{ backgroundColor: color }"
-                :class="newLabel.color === color ? 'ring-2 ring-primary' : ''"
-                @click="newLabel.color = color"
-              />
-            </div>
+            <Button 
+              @click="submitStepTwo" 
+              :disabled="!isFormValid || form.processing"
+              class="flex items-center gap-2"
+            >
+              <span>{{ form.processing ? 'Saving...' : 'Next: Review Project' }}</span>
+              <ArrowRight class="h-4 w-4" />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+
+    <!-- Dimension Modal -->
+    <Dialog :open="showDimensionModal" @update:open="showDimensionModal = $event">
+      <DialogContent v-if="editingDimension">
+        <DialogHeader>
+          <DialogTitle>
+            {{ editingIndex >= 0 ? 'Edit' : 'Add' }} Annotation Dimension
+          </DialogTitle>
+        </DialogHeader>
+        <div class="space-y-4">
+          <!-- Dimension Name -->
+          <div class="space-y-2">
+            <Label>Dimension Name *</Label>
+            <Input
+              v-model="editingDimension!.name"
+              placeholder="e.g., Gender, Emotion, Audio Quality"
+            />
           </div>
 
           <!-- Description -->
           <div class="space-y-2">
-            <Label>Description (Optional)</Label>
+            <Label>Description</Label>
             <Textarea
-              v-model="newLabel.description"
-              placeholder="Describe when this label should be used..."
+              v-model="editingDimension!.description"
+              placeholder="Describe what annotators should evaluate..."
               rows="2"
             />
           </div>
 
-          <!-- Preview -->
-          <div class="p-3 bg-muted/50 rounded-lg">
-            <p class="text-sm font-medium mb-2">Preview:</p>
-            <div class="flex items-center gap-3 p-2 border rounded">
+          <!-- Dimension Type -->
+          <div class="space-y-2">
+            <Label>Type</Label>
+            <Select v-model="editingDimension!.dimension_type">
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="categorical">Categorical (predefined options)</SelectItem>
+                <SelectItem value="numeric_scale">Numeric Scale (rating)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <!-- Categorical Values -->
+          <div v-if="editingDimension?.dimension_type === 'categorical'" class="space-y-4">
+            <div class="flex items-center justify-between">
+              <Label>Values</Label>
+              <Button @click="addDimensionValue" variant="outline" size="sm">
+                <Plus class="mr-2 h-4 w-4" />
+                Add Value
+              </Button>
+            </div>
+            
+            <div class="space-y-2">
               <div 
-                class="w-4 h-4 rounded-full border-2 border-white shadow-sm"
-                :style="{ backgroundColor: newLabel.color }"
-              />
-              <div>
-                <p class="font-medium text-sm">{{ newLabel.name || 'Label Name' }}</p>
-                <p v-if="newLabel.description" class="text-xs text-muted-foreground">
-                  {{ newLabel.description }}
-                </p>
+                v-for="(value, index) in editingDimension.values" 
+                :key="index"
+                class="flex items-center gap-2"
+              >
+                <GripVertical class="h-4 w-4 text-gray-400" />
+                <Input
+                  v-model="value.value"
+                  placeholder="Value (e.g., male)"
+                  class="flex-1"
+                />
+                <Input
+                  v-model="value.label"
+                  placeholder="Label (e.g., Male)"
+                  class="flex-1"
+                />
+                <Button
+                  @click="removeDimensionValue(index)"
+                  variant="destructive"
+                  size="sm"
+                  :disabled="editingDimension.values.length <= 1"
+                >
+                  <Trash2 class="h-4 w-4" />
+                </Button>
               </div>
             </div>
           </div>
 
+          <!-- Numeric Scale -->
+          <div v-if="editingDimension?.dimension_type === 'numeric_scale'" class="grid grid-cols-2 gap-4">
+            <div class="space-y-2">
+              <Label>Minimum Value</Label>
+              <Input
+                v-model.number="editingDimension.scale_min"
+                type="number"
+                min="1"
+                max="10"
+              />
+            </div>
+            <div class="space-y-2">
+              <Label>Maximum Value</Label>
+              <Input
+                v-model.number="editingDimension.scale_max"
+                type="number"
+                :min="(editingDimension.scale_min || 1) + 1"
+                max="10"
+              />
+            </div>
+          </div>
+
+          <!-- Required Toggle -->
+          <div class="flex items-center space-x-2">
+            <input
+              type="checkbox"
+              v-model="editingDimension!.is_required"
+              class="rounded"
+              id="required"
+            />
+            <Label for="required">Required dimension</Label>
+          </div>
+
           <!-- Modal Actions -->
           <div class="flex items-center justify-end gap-2 pt-4 border-t">
-            <Button @click="closeCreateLabelModal" variant="outline">
+            <Button @click="closeDimensionModal" variant="outline">
               Cancel
             </Button>
-            <Button @click="addNewLabel" :disabled="!isNewLabelValid">
+            <Button @click="saveDimension">
               <Save class="mr-2 h-4 w-4" />
-              Create Label
+              Save Dimension
             </Button>
           </div>
         </div>

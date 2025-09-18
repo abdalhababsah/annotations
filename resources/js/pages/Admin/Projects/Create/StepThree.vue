@@ -8,22 +8,19 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { type BreadcrumbItem } from '@/types';
 import { Head, useForm, Link } from '@inertiajs/vue3';
 import { computed } from 'vue';
-import { 
-  ArrowLeft, 
-  ArrowRight, 
-  CheckCircle2, 
-  Clock, 
-  Users, 
-  FileAudio, 
+import {
+  ArrowLeft,
+  CheckCircle2,
+  Clock,
+  Users,
+  FileAudio,
   Settings,
   AlertCircle,
   Play,
   Calendar,
   User,
-  Hash,
   Tags,
-  Layers,
-  Palette
+  Layers
 } from 'lucide-vue-next';
 
 interface DimensionValue {
@@ -37,8 +34,8 @@ interface AnnotationDimension {
   name: string;
   description: string;
   dimension_type: 'categorical' | 'numeric_scale';
-  scale_min?: number;
-  scale_max?: number;
+  scale_min?: number | null;
+  scale_max?: number | null;
   is_required: boolean;
   values: DimensionValue[];
 }
@@ -47,25 +44,26 @@ interface SegmentationLabel {
   id: number;
   name: string;
   color: string;
-  description?: string;
+  description?: string | null;
+}
+
+interface ProjectOwner {
+  id: number;
+  name: string;
+  email: string;
 }
 
 interface Project {
   id: number;
   name: string;
-  description: string;
+  description: string | null;
   status: string;
-  project_type: 'annotation' | 'segmentation';
-  allow_custom_labels?: boolean;
+  // NOTE: project_type may NOT be present from backend; this file does NOT rely on it.
   task_time_minutes: number;
   review_time_minutes: number;
-  annotation_guidelines: string;
-  deadline: string | null;
-  owner: {
-    id: number;
-    name: string;
-    email: string;
-  };
+  annotation_guidelines: string | null;
+  deadline: string | null; // 'YYYY-MM-DD'
+  owner: ProjectOwner;
   created_at: string;
 }
 
@@ -83,8 +81,8 @@ interface Statistics {
 
 interface Props {
   project: Project;
-  dimensions?: AnnotationDimension[];
-  segmentationLabels?: SegmentationLabel[];
+  dimensions?: AnnotationDimension[];        // present for annotation flow
+  segmentationLabels?: SegmentationLabel[]; // present for segmentation flow
   statistics: Statistics;
   currentStep: number;
   totalSteps: number;
@@ -98,52 +96,40 @@ const breadcrumbs: BreadcrumbItem[] = [
   { title: 'Review & Finalize', href: '#' },
 ];
 
-// Form for finalizing the project
 const form = useForm({});
 
-// Configuration data based on project type
+// Infer mode strictly from returned data
+const mode = computed<'annotation' | 'segmentation'>(() => {
+  if (Array.isArray(props.segmentationLabels)) return 'segmentation';
+  return 'annotation';
+});
+
+// Normalized config for the UI, based solely on presence of arrays
 const configurationData = computed(() => {
-  if (props.project.project_type === 'annotation') {
+  if (mode.value === 'annotation') {
+    const items = props.dimensions ?? [];
     return {
-      items: props.dimensions || [],
+      items,
       title: 'Annotation Dimensions',
       icon: Tags,
       emptyMessage: 'No annotation dimensions configured',
-      stepName: 'Dimensions'
+      stepName: 'Dimensions',
+      typeLabel: 'Audio Annotation'
     };
   } else {
+    const items = props.segmentationLabels ?? [];
     return {
-      items: props.segmentationLabels || [],
+      items,
       title: 'Segmentation Labels',
       icon: Layers,
       emptyMessage: 'No segmentation labels configured',
-      stepName: 'Labels'
+      stepName: 'Labels',
+      typeLabel: 'Audio Segmentation'
     };
   }
 });
 
-// Validation - project is ready if it has configuration
-const isProjectReady = computed(() => {
-  return configurationData.value.items.length > 0;
-});
-
-// Project type configuration
-const projectTypeConfig = computed(() => {
-  return {
-    annotation: {
-      title: 'Audio Annotation',
-      description: 'Evaluate audio files using predefined dimensions',
-      configType: 'dimensions',
-      guidelines: 'Annotation Guidelines'
-    },
-    segmentation: {
-      title: 'Audio Segmentation',
-      description: 'Label time-based sections of audio files',
-      configType: 'labels',
-      guidelines: 'Segmentation Guidelines'
-    }
-  }[props.project.project_type];
-});
+const isProjectReady = computed(() => configurationData.value.items.length > 0);
 
 // Format time helper
 const formatTime = (minutes: number) => {
@@ -160,7 +146,7 @@ const finalizeProject = () => {
   }
 };
 
-// Go back to step 2
+// Back to step two
 const goToPreviousStep = () => {
   window.location.href = route('admin.projects.create.step-two', props.project.id);
 };
@@ -176,7 +162,7 @@ const goToPreviousStep = () => {
         <div>
           <h1 class="text-3xl font-bold tracking-tight">Review & Finalize Project</h1>
           <p class="text-muted-foreground">
-            Step {{ currentStep }} of {{ totalSteps }}: Review your {{ project.project_type }} project configuration and activate
+            Step {{ currentStep }} of {{ totalSteps }}: Review your {{ configurationData.typeLabel.toLowerCase() }} configuration and activate
           </p>
         </div>
         <Link :href="route('admin.projects.index')">
@@ -197,9 +183,9 @@ const goToPreviousStep = () => {
             </div>
             <span class="ml-2 text-sm font-medium text-green-600">Basic Info</span>
           </div>
-          
+
           <Separator class="flex-1" />
-          
+
           <!-- Step 2 - Completed -->
           <div class="flex items-center">
             <div class="flex items-center justify-center w-8 h-8 rounded-full bg-green-600 text-white text-sm font-medium">
@@ -209,9 +195,9 @@ const goToPreviousStep = () => {
               {{ configurationData.stepName }}
             </span>
           </div>
-          
+
           <Separator class="flex-1" />
-          
+
           <!-- Step 3 - Active -->
           <div class="flex items-center">
             <div class="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white text-sm font-medium">
@@ -227,7 +213,7 @@ const goToPreviousStep = () => {
       <Alert v-if="isProjectReady" class="border-green-200 bg-green-50">
         <CheckCircle2 class="h-4 w-4 text-green-600" />
         <AlertDescription class="text-green-800">
-          Your {{ project.project_type }} project is ready to launch! Review the configuration below and click "Activate Project" to begin.
+          Your {{ configurationData.typeLabel.toLowerCase() }} project is ready to launch! Review the configuration below and click "Activate Project" to begin.
         </AlertDescription>
       </Alert>
 
@@ -251,28 +237,25 @@ const goToPreviousStep = () => {
                 <p class="text-sm text-muted-foreground">Project Name</p>
                 <p class="font-medium">{{ project.name }}</p>
               </div>
+
               <div>
                 <p class="text-sm text-muted-foreground">Project Type</p>
                 <div class="flex items-center gap-2">
-                  <component :is="project.project_type === 'annotation' ? Tags : Layers" class="h-4 w-4" />
-                  <Badge variant="outline" class="capitalize">{{ projectTypeConfig?.title }}</Badge>
+                  <component :is="mode === 'annotation' ? Tags : Layers" class="h-4 w-4" />
+                  <Badge variant="outline">{{ configurationData.typeLabel }}</Badge>
                 </div>
               </div>
+
               <div>
                 <p class="text-sm text-muted-foreground">Status</p>
                 <Badge variant="outline" class="capitalize">{{ project.status }}</Badge>
               </div>
-              <div v-if="project.allow_custom_labels">
-                <p class="text-sm text-muted-foreground">Custom Labels</p>
-                <Badge variant="secondary" class="gap-1">
-                  <Tags class="h-3 w-3" />
-                  Enabled
-                </Badge>
-              </div>
+
               <div v-if="project.description" class="md:col-span-2">
                 <p class="text-sm text-muted-foreground">Description</p>
                 <p class="text-sm">{{ project.description }}</p>
               </div>
+
               <div v-if="project.deadline">
                 <p class="text-sm text-muted-foreground flex items-center gap-1">
                   <Calendar class="h-3 w-3" />
@@ -280,6 +263,7 @@ const goToPreviousStep = () => {
                 </p>
                 <p class="font-medium">{{ new Date(project.deadline).toLocaleDateString() }}</p>
               </div>
+
               <div>
                 <p class="text-sm text-muted-foreground flex items-center gap-1">
                   <User class="h-3 w-3" />
@@ -303,7 +287,7 @@ const goToPreviousStep = () => {
               <div class="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
                 <div>
                   <p class="text-sm font-medium">Task Time Limit</p>
-                  <p class="text-xs text-muted-foreground">Per {{ project.project_type }} task</p>
+                  <p class="text-xs text-muted-foreground">Per task</p>
                 </div>
                 <Badge variant="secondary">{{ formatTime(project.task_time_minutes) }}</Badge>
               </div>
@@ -323,7 +307,7 @@ const goToPreviousStep = () => {
           <div v-if="project.annotation_guidelines">
             <h3 class="font-semibold mb-3 flex items-center gap-2">
               <FileAudio class="h-4 w-4" />
-              {{ projectTypeConfig?.guidelines }}
+              Guidelines
             </h3>
             <div class="pl-6">
               <div class="p-3 bg-muted/50 rounded-lg">
@@ -334,7 +318,7 @@ const goToPreviousStep = () => {
         </CardContent>
       </Card>
 
-      <!-- Configuration Summary (Dimensions OR Labels) -->
+      <!-- Configuration Summary -->
       <Card>
         <CardHeader>
           <CardTitle class="flex items-center gap-2">
@@ -346,14 +330,14 @@ const goToPreviousStep = () => {
           <Alert v-if="configurationData.items.length === 0" variant="destructive" class="mb-4">
             <AlertCircle class="h-4 w-4" />
             <AlertDescription>
-              {{ configurationData.emptyMessage }}. You need at least one {{ project.project_type === 'annotation' ? 'dimension' : 'label' }} to activate the project.
+              {{ configurationData.emptyMessage }}. You need at least one {{ mode === 'annotation' ? 'dimension' : 'label' }} to activate the project.
             </AlertDescription>
           </Alert>
 
           <!-- Annotation Dimensions -->
-          <div v-if="project.project_type === 'annotation'" class="space-y-4">
-            <div 
-              v-for="(dimension, index) in dimensions" 
+          <div v-if="mode === 'annotation'" class="space-y-4">
+            <div
+              v-for="(dimension, index) in (dimensions || [])"
               :key="dimension.id"
               class="border rounded-lg p-4 hover:bg-muted/50 transition-colors"
             >
@@ -361,27 +345,24 @@ const goToPreviousStep = () => {
                 <div class="flex items-center gap-2">
                   <span class="text-sm font-medium text-muted-foreground">{{ index + 1 }}.</span>
                   <h3 class="font-medium">{{ dimension.name }}</h3>
-                  <Badge 
-                    :variant="dimension.dimension_type === 'categorical' ? 'default' : 'secondary'"
-                    class="text-xs"
-                  >
+                  <Badge :variant="dimension.dimension_type === 'categorical' ? 'default' : 'secondary'" class="text-xs">
                     {{ dimension.dimension_type === 'categorical' ? 'Categorical' : 'Numeric Scale' }}
                   </Badge>
                   <Badge v-if="dimension.is_required" variant="outline" class="text-xs">Required</Badge>
                 </div>
               </div>
-              
+
               <p v-if="dimension.description" class="text-sm text-muted-foreground mb-3">
                 {{ dimension.description }}
               </p>
-              
+
               <!-- Categorical Values Preview -->
               <div v-if="dimension.dimension_type === 'categorical'" class="space-y-2">
                 <p class="text-xs text-muted-foreground">Available Options:</p>
                 <div class="flex flex-wrap gap-1">
-                  <Badge 
-                    v-for="value in dimension.values" 
-                    :key="value.id" 
+                  <Badge
+                    v-for="value in (dimension.values || [])"
+                    :key="value.id"
                     variant="outline"
                     class="text-xs"
                   >
@@ -389,7 +370,7 @@ const goToPreviousStep = () => {
                   </Badge>
                 </div>
               </div>
-              
+
               <!-- Numeric Scale Preview -->
               <div v-else class="space-y-2">
                 <p class="text-xs text-muted-foreground">Scale Range:</p>
@@ -398,7 +379,7 @@ const goToPreviousStep = () => {
                   <span class="text-xs text-muted-foreground">to</span>
                   <Badge variant="outline" class="text-xs">{{ dimension.scale_max }}</Badge>
                   <span class="text-xs text-muted-foreground">
-                    ({{ (dimension.scale_max || 0) - (dimension.scale_min || 0) + 1 }} point scale)
+                    ({{ ((dimension.scale_max || 0) - (dimension.scale_min || 0) + 1) }} point scale)
                   </span>
                 </div>
               </div>
@@ -406,14 +387,14 @@ const goToPreviousStep = () => {
           </div>
 
           <!-- Segmentation Labels -->
-          <div v-else-if="project.project_type === 'segmentation'" class="space-y-4">
+          <div v-else class="space-y-4">
             <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <div 
-                v-for="(label, index) in segmentationLabels" 
+              <div
+                v-for="(label, index) in (segmentationLabels || [])"
                 :key="label.id"
                 class="flex items-center gap-3 p-4 rounded-lg border hover:bg-muted/50 transition-colors"
               >
-                <div 
+                <div
                   class="w-4 h-4 rounded-full border-2 border-white shadow-sm flex-shrink-0"
                   :style="{ backgroundColor: label.color }"
                 />
@@ -428,14 +409,6 @@ const goToPreviousStep = () => {
                 </div>
               </div>
             </div>
-
-            <!-- Custom Labels Info -->
-            <Alert v-if="project.allow_custom_labels" class="border-blue-200 bg-blue-50">
-              <Tags class="h-4 w-4 text-blue-600" />
-              <AlertDescription class="text-blue-800">
-                <strong>Custom Labels Enabled:</strong> Annotators can create additional labels during segmentation tasks if needed.
-              </AlertDescription>
-            </Alert>
           </div>
         </CardContent>
       </Card>
@@ -454,20 +427,20 @@ const goToPreviousStep = () => {
               <div class="text-lg font-bold">{{ statistics.total_audio_files }}</div>
               <div class="text-sm text-muted-foreground">Audio Files</div>
             </div>
-            
+
             <div class="bg-muted/50 p-4 rounded-lg text-center">
               <div class="text-lg font-bold">{{ statistics.total_tasks }}</div>
               <div class="text-sm text-muted-foreground">Total Tasks</div>
             </div>
-            
+
             <div class="bg-muted/50 p-4 rounded-lg text-center">
               <div class="text-lg font-bold">{{ statistics.team_size }}</div>
               <div class="text-sm text-muted-foreground">Team Members</div>
             </div>
           </div>
-          
+
           <p class="text-sm text-muted-foreground mt-4 text-center">
-            Once activated, you can add team members, upload audio files, and begin {{ project.project_type }} tasks.
+            Once activated, you can add team members, upload audio files, and begin {{ configurationData.typeLabel.toLowerCase() }} tasks.
           </p>
         </CardContent>
       </Card>
@@ -490,16 +463,14 @@ const goToPreviousStep = () => {
               <ArrowLeft class="mr-2 h-4 w-4" />
               Previous: Edit {{ configurationData.stepName }}
             </Button>
-            
+
             <div class="flex items-center gap-3">
-              <!-- Save as Draft (already saved) -->
               <p class="text-sm text-muted-foreground">
                 Project saved as draft
               </p>
-              
-              <!-- Activate Project -->
-              <Button 
-                @click="finalizeProject" 
+
+              <Button
+                @click="finalizeProject"
                 :disabled="!isProjectReady || form.processing"
                 class="flex items-center gap-2"
                 size="lg"
@@ -510,7 +481,6 @@ const goToPreviousStep = () => {
             </div>
           </div>
 
-          <!-- Activation Info -->
           <Alert class="mt-4">
             <AlertCircle class="h-4 w-4" />
             <AlertDescription>
@@ -519,7 +489,7 @@ const goToPreviousStep = () => {
                 <li>Project status will change to "Active"</li>
                 <li>You can add team members and assign roles</li>
                 <li>Audio files can be uploaded and converted to tasks</li>
-                <li>Workers can begin {{ project.project_type === 'annotation' ? 'annotating' : 'segmenting' }} assigned tasks</li>
+                <li>Workers can begin {{ mode === 'annotation' ? 'annotating' : 'segmenting' }} assigned tasks</li>
                 <li>You can modify project settings anytime after activation</li>
               </ul>
             </AlertDescription>

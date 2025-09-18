@@ -24,6 +24,7 @@ return Application::configure(basePath: dirname(__DIR__))
         
         $middleware->alias([
             'role' => \App\Http\Middleware\EnsureUserHasRole::class,
+            'no.active.task' => \App\Http\Middleware\EnsureNoActiveTask::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

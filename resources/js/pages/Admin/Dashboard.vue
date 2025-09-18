@@ -19,7 +19,7 @@ const breadcrumbs: BreadcrumbItem[] = [
 
   <AppLayout :breadcrumbs="breadcrumbs">
     <div class="flex h-full flex-1 flex-col gap-4 rounded-xl p-4 overflow-x-auto">
-      <div class="grid auto-rows-min gap-4 md:grid-cols-3">
+      <div class="grid auto-rows-min gap-4 md:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>Users</CardTitle>
@@ -52,21 +52,7 @@ const breadcrumbs: BreadcrumbItem[] = [
           </CardFooter>
         </Card>
         
-        <Card>
-          <CardHeader>
-            <CardTitle>System Settings</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p>Configure system settings</p>
-          </CardContent>
-          <CardFooter>
-            <Button>
-              <Link href="#">
-                Settings
-              </Link>
-            </Button>
-          </CardFooter>
-        </Card>
+
       </div>
 
       <div class="relative min-h-[50vh] flex-1 rounded-xl border border-sidebar-border/70 md:min-h-min dark:border-sidebar-border p-6">

@@ -46,10 +46,10 @@ const acceptAttr = computed(() =>
 )
 
 const readableSize = (bytes: number) => {
-  const units = ['B','KB','MB','GB']
+  const units = ['B', 'KB', 'MB', 'GB']
   let size = bytes, i = 0
-  while (size >= 1024 && i < units.length-1) { size /= 1024; i++ }
-  return `${size.toFixed( i === 0 ? 0 : 2 )} ${units[i]}`
+  while (size >= 1024 && i < units.length - 1) { size /= 1024; i++ }
+  return `${size.toFixed(i === 0 ? 0 : 2)} ${units[i]}`
 }
 
 const onDrop = (e: DragEvent) => {
@@ -137,6 +137,7 @@ const submitImport = () => {
 </script>
 
 <template>
+
   <Head :title="`Add Audio Files • ${project.name}`" />
 
   <AppLayout :breadcrumbs="[
@@ -154,33 +155,27 @@ const submitImport = () => {
           <p class="text-muted-foreground">Upload new files or import from S3 links</p>
         </div>
         <Link :href="route('admin.projects.audio-files.index', project.id)">
-          <Button variant="ghost" class="gap-2">
-            <ArrowLeft class="h-4 w-4" />
-            Back
-          </Button>
+        <Button variant="ghost" class="gap-2">
+          <ArrowLeft class="h-4 w-4" />
+          Back
+        </Button>
         </Link>
       </div>
 
       <!-- Tabs -->
       <div class="inline-flex rounded-lg border bg-card p-1 w-full md:w-auto">
-        <Button
-          :variant="activeTab==='upload' ? 'default' : 'ghost'"
-          class="gap-2"
-          @click="activeTab='upload'">
+        <Button :variant="activeTab === 'upload' ? 'default' : 'ghost'" class="gap-2" @click="activeTab = 'upload'">
           <Upload class="h-4 w-4" />
           Upload
         </Button>
-        <Button
-          :variant="activeTab==='import' ? 'default' : 'ghost'"
-          class="gap-2"
-          @click="activeTab='import'">
+        <Button :variant="activeTab === 'import' ? 'default' : 'ghost'" class="gap-2" @click="activeTab = 'import'">
           <ImportIcon class="h-4 w-4" />
           Import Links
         </Button>
       </div>
 
       <!-- Upload tab -->
-      <Card v-if="activeTab==='upload'">
+      <Card v-if="activeTab === 'upload'">
         <CardHeader>
           <CardTitle class="flex items-center gap-2">
             <FileAudio class="h-5 w-5" /> Upload audio files
@@ -195,12 +190,9 @@ const submitImport = () => {
           </Alert>
 
           <!-- Drop area -->
-          <div
-            ref="dropZone"
+          <div ref="dropZone"
             class="rounded-lg border-2 border-dashed p-8 text-center transition-colors hover:bg-muted/40"
-            @dragover.prevent
-            @drop="onDrop"
-          >
+            @dragover.prevent @drop="onDrop">
             <p class="text-sm text-muted-foreground">
               Drag & drop audio files here
             </p>
@@ -208,20 +200,14 @@ const submitImport = () => {
             <Button type="button" class="gap-2" @click="onBrowse">
               <Upload class="h-4 w-4" /> Browse files
             </Button>
-            <input
-              ref="fileInput"
-              type="file"
-              :accept="acceptAttr"
-              multiple
-              class="hidden"
-              @change="onPicked" />
+            <input ref="fileInput" type="file" :accept="acceptAttr" multiple class="hidden" @change="onPicked" />
           </div>
 
           <!-- Queue list -->
           <div v-if="queue.length" class="space-y-3">
             <div class="flex items-center justify-between">
               <div class="text-sm">
-                Selected <b>{{ queue.length }}</b> file{{ queue.length>1 ? 's' : '' }}
+                Selected <b>{{ queue.length }}</b> file{{ queue.length > 1 ? 's' : '' }}
               </div>
               <Button variant="outline" size="sm" @click="clearQueue" class="gap-2">
                 <Trash class="h-4 w-4" />
@@ -256,7 +242,7 @@ const submitImport = () => {
           </div>
           <div class="flex gap-2">
             <Link :href="route('admin.projects.audio-files.index', project.id)">
-              <Button variant="outline">Cancel</Button>
+            <Button variant="outline">Cancel</Button>
             </Link>
             <Button :disabled="!canUpload" @click="startUpload">
               {{ uploading ? 'Uploading…' : 'Start Upload' }}
@@ -275,8 +261,11 @@ const submitImport = () => {
         <CardContent class="space-y-6">
           <Alert>
             <AlertDescription class="text-sm">
-              You can upload an Excel/CSV file (first column or a header named <b>url</b>) or paste links (one per line).
-              If a link already points to your bucket, we’ll register it without re-uploading. Otherwise we copy it into your bucket.
+              You can upload an Excel/CSV file (first column or a header named <b>url</b>) or paste links (one per
+              line).
+              If a link already points to your bucket, we’ll register it without re-uploading. Otherwise we copy it into
+              your
+              bucket.
             </AlertDescription>
           </Alert>
 
@@ -285,7 +274,7 @@ const submitImport = () => {
             <div class="space-y-2">
               <div class="text-sm font-medium">Excel/CSV file</div>
               <Input ref="importFile" type="file"
-                     accept=".csv, application/vnd.ms-excel, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+                accept=".csv, application/vnd.ms-excel, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
               <p class="text-xs text-muted-foreground">
                 First sheet only. Either a first column with links or a column named <b>url</b>.
               </p>
@@ -295,12 +284,8 @@ const submitImport = () => {
             <div class="space-y-2">
               <div class="text-sm font-medium">Paste links</div>
               <!-- If you don’t have a Textarea component, swap for native <textarea> -->
-              <Textarea
-                v-model="importLinks"
-                rows="8"
-                placeholder="https://mahalatna.s3.eu-north-1.amazonaws.com/projects/123/audio/file1.mp3
-https://other-bucket.s3.amazonaws.com/path/file2.wav"
-              />
+              <Textarea v-model="importLinks" rows="8" placeholder="https://mahalatna.s3.eu-north-1.amazonaws.com/projects/123/audio/file1.mp3
+https://other-bucket.s3.amazonaws.com/path/file2.wav" />
               <p class="text-xs text-muted-foreground">
                 One URL per line. Both public S3 and your bucket URLs are accepted.
               </p>
@@ -323,7 +308,7 @@ https://other-bucket.s3.amazonaws.com/path/file2.wav"
         </CardContent>
         <CardFooter class="flex items-center justify-between">
           <Link :href="route('admin.projects.audio-files.index', project.id)">
-            <Button variant="outline">Cancel</Button>
+          <Button variant="outline">Cancel</Button>
           </Link>
           <Button :disabled="!canImport" @click="submitImport">
             {{ importing ? 'Importing…' : 'Import' }}

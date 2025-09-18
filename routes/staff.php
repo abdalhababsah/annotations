@@ -1,10 +1,12 @@
 <?php
 
+use App\Http\Controllers\Staff\CustomLabelController;
+use App\Http\Controllers\TaskClaimController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Staff\DashboardController as StaffDashboardController;
 use App\Http\Controllers\Staff\TaskController as StaffTaskController;
 
-Route::middleware(['auth'])->prefix('staff')->name('staff.')->group(function () {
+Route::middleware(['auth', 'role:Staff','verified'])->prefix('staff')->name('staff.')->group(function () {
     Route::get('/dashboard', [StaffDashboardController::class, 'index'])->name('dashboard');
 
     // Attempt (annotator)
@@ -23,4 +25,27 @@ Route::middleware(['auth'])->prefix('staff')->name('staff.')->group(function () 
 
     // Success page after submit/approve/skip
     Route::get('/projects/{project}/flow/success', [StaffTaskController::class, 'success'])->name('flow.success');
+    Route::prefix('projects/{project}/tasks/{task}')->group(function () {
+        Route::post('custom-labels', [CustomLabelController::class, 'create'])
+            ->name('custom-labels.create');
+        // NEW: JSON endpoint
+        Route::post('custom-labels.json', [CustomLabelController::class, 'createJson'])
+            ->name('custom-labels.create.json');
+
+        Route::get('custom-labels', [CustomLabelController::class, 'index'])
+            ->name('custom-labels.index');
+        Route::put('custom-labels/{customLabel}', [CustomLabelController::class, 'update'])
+            ->name('custom-labels.update');
+        Route::delete('custom-labels/{customLabel}', [CustomLabelController::class, 'destroy'])
+            ->name('custom-labels.destroy');
+    });
+});
+
+// routes/web.php
+// Route::middleware(['auth'])->group(function () {
+//     Route::get('/tasks/{task}/attempt', [TaskAttemptController::class, 'show'])->name('tasks.attempt');
+// });
+
+Route::middleware(['auth','no.active.task'])->group(function () {
+    Route::post('/tasks/{task}/select', [TaskClaimController::class, 'select'])->name('tasks.select');
 });

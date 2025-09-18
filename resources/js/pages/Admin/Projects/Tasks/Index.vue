@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/app/AppSidebarLayout.vue'
-import { Head, router, Link } from '@inertiajs/vue3'
+import { Head, router } from '@inertiajs/vue3'
 import { ref, computed, watch } from 'vue'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -22,9 +22,10 @@ type Row = {
   submitted_at?:string|null; approved_at?:string|null;
 }
 type Dimension = { id:number; name:string; dimension_type:string }
+type SegmentationLabel = { id:number; name:string; color:string; description?:string|null }
 
 const props = defineProps<{
-  project: { id:number; name:string }
+  project: { id:number; name:string; project_type: 'annotation' | 'segmentation' }
   tasks: {
     data: Row[]
     links: Array<{ url:string|null; label:string; active:boolean }>
@@ -32,10 +33,13 @@ const props = defineProps<{
   }
   filters: { q:string; status:string; batches:number[] }
   batches: Batch[]
-  dimensions: Dimension[]
+  // Present only for annotation projects
+  dimensions?: Dimension[] | null
+  // Present only for segmentation projects
+  segmentation_labels?: SegmentationLabel[] | null
 }>()
 
-const pg = computed(() => props.tasks.meta)
+const pg   = computed(() => props.tasks.meta)
 const list = computed(() => props.tasks.data)
 
 const q = ref(props.filters.q || '')
@@ -55,17 +59,25 @@ watch([status, selectedBatches], () => reload(1))
 watch(q, () => { clearTimeout(debounceTimer); debounceTimer = window.setTimeout(() => reload(1), 400) })
 
 const openExport = ref(false)
+const isSegmentation = computed(() => props.project.project_type === 'segmentation')
 </script>
 
 <template>
   <Head :title="`Tasks • ${project.name}`" />
-  <AppLayout :breadcrumbs="[{ title: 'Projects', href: '/admin/projects' }, { title: project.name, href: `/admin/projects/${project.id}` }, { title:'Tasks', href:'#' }]">
+  <AppLayout :breadcrumbs="[
+      { title: 'Projects', href: '/admin/projects' },
+      { title: project.name, href: `/admin/projects/${project.id}` },
+      { title:'Tasks', href:'#' }
+    ]">
     <div class="flex-1 p-6 space-y-6">
 
       <div class="flex items-center justify-between gap-4">
         <div>
           <h1 class="text-2xl md:text-3xl font-bold tracking-tight">Tasks</h1>
-          <p class="text-muted-foreground">Browse and export tasks for <strong>{{ project.name }}</strong></p>
+          <p class="text-muted-foreground">
+            Browse and export tasks for <strong>{{ project.name }}</strong>
+            <Badge variant="outline" class="ml-2 capitalize">{{ project.project_type }}</Badge>
+          </p>
         </div>
         <Button class="gap-2" @click="openExport = true">
           <Download class="h-4 w-4" />
@@ -219,11 +231,13 @@ const openExport = ref(false)
       </div>
     </div>
 
-    <!-- Export dialog -->
     <ExportDialog
       v-model:open="openExport"
       :project-id="project.id"
       :batches="batches"
+      :project-type="project.project_type"
+      :segmentation-labels="segmentation_labels || []"
+      :dimensions="dimensions || []" 
     />
   </AppLayout>
 </template>
