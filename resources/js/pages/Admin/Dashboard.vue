@@ -29,7 +29,7 @@ const breadcrumbs: BreadcrumbItem[] = [
           </CardContent>
           <CardFooter>
             <Button>
-              <Link href="#">
+              <Link :href="route('admin.users.index')">
                 Manage Users
               </Link>
             </Button>
