@@ -6,7 +6,13 @@ import type { DefineComponent } from 'vue';
 import { createApp, h } from 'vue';
 import { ZiggyVue } from 'ziggy-js';
 import { initializeTheme } from './composables/useAppearance';
+import SmoothScroll from 'smooth-scroll';
 
+new SmoothScroll('a[href*="#"]', {
+  speed: 800, // Scroll speed in milliseconds
+  speedAsDuration: true,
+  easing: 'easeInOutCubic',
+});
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 
 createInertiaApp({
